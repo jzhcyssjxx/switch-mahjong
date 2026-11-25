@@ -10,7 +10,7 @@ ROMFS       := romfs
 
 APP_TITLE   := 明星三缺一风格迷你麻将
 APP_AUTHOR  := HomebrewDev
-APP_VERSION := 0.1.0
+APP_VERSION := 1.0.0
 
 CXXFLAGS    := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES) -std=gnu++17
 export LD   := $(CXX)
