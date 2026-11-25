@@ -1,11 +1,12 @@
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
+
 TARGET      := switch-mahjong
 BUILD       := build
 SOURCES     := source
 DATA        := data
 INCLUDES    := include
-ROMFS       := $(CURDIR)/romfs
+ROMFS       := romfs
 
 APP_TITLE   := 明星三缺一风格迷你麻将
 APP_AUTHOR  := HomebrewDev
@@ -34,7 +35,8 @@ export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                    -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-export ROMFS_T  := $(OUTPUT).romfs
+export ROMFS_DIR := $(CURDIR)/$(ROMFS)
+export ROMFS_T   := $(OUTPUT).romfs
 
 .PHONY: $(BUILD) clean all
 
@@ -52,6 +54,9 @@ else
 
 $(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp $(ROMFS_T)
 $(OUTPUT).elf : $(OFILES)
+
+$(ROMFS_T): $(ROMFS_DIR)
+	@build_romfs $(ROMFS_DIR) $@
 
 %.o : %.cpp
 	@echo $(notdir $<)
