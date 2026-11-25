@@ -362,8 +362,15 @@ void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x,
 int main(int argc, char* argv[]) {
     std::srand((unsigned int)std::time(nullptr));
     romfsInit();
+
+    // 1. 必须最先初始化 Switch 手柄输入，再初始化 SDL 视频，否则必定闪退！
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     TTF_Init();
+    IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
     Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048);
 
     SDL_Window* win = SDL_CreateWindow("Mahjong", 0, 0, 1280, 720, 0);
@@ -382,14 +389,22 @@ int main(int argc, char* argv[]) {
     gSfxTaunt = Mix_LoadWAV("romfs:/voices/taunt.wav");
     if (gBgm) Mix_PlayMusic(gBgm, -1);
 
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    PadState pad;
-    padInitializeDefault(&pad);
-IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
-SDL_Texture* aiTex0 = IMG_LoadTexture(ren, "romfs:/ai0.png");
-SDL_Texture* aiTex1 = IMG_LoadTexture(ren, "romfs:/ai1.png");
-SDL_Texture* aiTex2 = IMG_LoadTexture(ren, "romfs:/ai2.png");
-std::vector<SDL_Texture*> aiAvatars = {aiTex0, aiTex1, aiTex2};
+    // 2. 加载三位牌友的默认、大笑、哭脸共 9 张头像
+    std::vector<SDL_Texture*> aiNormal = {
+        IMG_LoadTexture(ren, "romfs:/ai0.png"),
+        IMG_LoadTexture(ren, "romfs:/ai1.png"),
+        IMG_LoadTexture(ren, "romfs:/ai2.png")
+    };
+    std::vector<SDL_Texture*> aiWin = {
+        IMG_LoadTexture(ren, "romfs:/ai0_win.png"),
+        IMG_LoadTexture(ren, "romfs:/ai1_win.png"),
+        IMG_LoadTexture(ren, "romfs:/ai2_win.png")
+    };
+    std::vector<SDL_Texture*> aiLose = {
+        IMG_LoadTexture(ren, "romfs:/ai0_lose.png"),
+        IMG_LoadTexture(ren, "romfs:/ai1_lose.png"),
+        IMG_LoadTexture(ren, "romfs:/ai2_lose.png")
+    };
 
     bool inMenu = true;
     int menuCursor = 0;      // 0=台湾16张麻将, 1=日本13张立直麻将
@@ -826,10 +841,13 @@ for (int idx = 0; idx < 3; ++idx) {
     SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
     SDL_RenderFillRect(ren, &box);
 
-    SDL_Rect avRect = {box.x + 10, box.y + 11, 82, 82};
-    if (aiAvatars.at(aiIdx)) {
-        SDL_RenderCopy(ren, aiAvatars.at(aiIdx), nullptr, &avRect);
-    }
+            SDL_Rect avRect = {box.x + 10, box.y + 11, 82, 82};
+            SDL_Texture* curTex = aiNormal.at(aiIdx);
+            if (phase == 3 && hasWinPanel) {
+                if (lastWinResult.scoreDeltas.at(aiIdx) > 0 && aiWin.at(aiIdx)) curTex = aiWin.at(aiIdx);
+                else if (lastWinResult.scoreDeltas.at(aiIdx) < 0 && aiLose.at(aiIdx)) curTex = aiLose.at(aiIdx);
+            }
+            if (curTex) SDL_RenderCopy(ren, curTex, nullptr, &avRect);
     std::string header = ais.at(aiIdx).name + " [" + std::to_string(ais.at(aiIdx).score) + "]";
     drawText(ren, fontSmall, header, box.x + 102, box.y + 10, cWhite);
 
