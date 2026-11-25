@@ -12,7 +12,7 @@ APP_TITLE   := 明星三缺一风格迷你麻将
 APP_AUTHOR  := HomebrewDev
 APP_VERSION := 1.0.0
 
-CXXFLAGS    := -g -Wall -O2 -ffunction-sections $(ARCH) -fPIC $(DEFINES) -std=gnu++17
+CXXFLAGS    := -g -Wall -O2 -ffunction-sections $(ARCH) -fPIE $(DEFINES) -std=gnu++17
 export LD   := $(CXX)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
