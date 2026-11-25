@@ -289,3 +289,11 @@ int main(int argc, char* argv[]) {
     Mix_FreeChunk(gSfxHu);
     Mix_FreeChunk(gSfxTaunt);
     Mix_FreeMusic(gBgm);
+    if (fontBig) TTF_CloseFont(fontBig);
+    if (fontSmall) TTF_CloseFont(fontSmall);
+    Mix_CloseAudio();
+    TTF_Quit();
+    SDL_Quit();
+    romfsExit();
+    return 0;
+}
