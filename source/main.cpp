@@ -2,6 +2,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 #include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_image.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -384,6 +385,11 @@ int main(int argc, char* argv[]) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
+IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
+SDL_Texture* aiTex0 = IMG_LoadTexture(ren, "romfs:/ai0.png");
+SDL_Texture* aiTex1 = IMG_LoadTexture(ren, "romfs:/ai1.png");
+SDL_Texture* aiTex2 = IMG_LoadTexture(ren, "romfs:/ai2.png");
+std::vector<SDL_Texture*> aiAvatars = {aiTex0, aiTex1, aiTex2};
 
     bool inMenu = true;
     int menuCursor = 0;      // 0=台湾16张麻将, 1=日本13张立直麻将
@@ -814,19 +820,24 @@ int main(int argc, char* argv[]) {
         drawText(ren, fontSmall, topRight, 690, 14, cGold);
 
         std::vector<int> displayOrder = {2, 1, 0};
-        for (int idx = 0; idx < 3; ++idx) {
-            int aiIdx = displayOrder.at(idx);
-            SDL_Rect box = {30 + idx * 415, 50, 390, 105};
-            SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
-            SDL_RenderFillRect(ren, &box);
-            std::string header = ais.at(aiIdx).name + "  [" + std::to_string(ais.at(aiIdx).score) + "]";
-            drawText(ren, fontSmall, header, box.x + 12, box.y + 10, cWhite);
+for (int idx = 0; idx < 3; ++idx) {
+    int aiIdx = displayOrder.at(idx);
+    SDL_Rect box = {30 + idx * 415, 50, 390, 105};
+    SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
+    SDL_RenderFillRect(ren, &box);
 
-            SDL_Rect bub = {box.x + 12, box.y + 46, 366, 44};
-            SDL_SetRenderDrawColor(ren, 254, 240, 138, 255);
-            SDL_RenderFillRect(ren, &bub);
-            drawText(ren, fontSmall, ais.at(aiIdx).bubble, bub.x + 10, bub.y + 10, cDark);
-        }
+    SDL_Rect avRect = {box.x + 10, box.y + 11, 82, 82};
+    if (aiAvatars.at(aiIdx)) {
+        SDL_RenderCopy(ren, aiAvatars.at(aiIdx), nullptr, &avRect);
+    }
+    std::string header = ais.at(aiIdx).name + " [" + std::to_string(ais.at(aiIdx).score) + "]";
+    drawText(ren, fontSmall, header, box.x + 102, box.y + 10, cWhite);
+
+    SDL_Rect bub = {box.x + 102, box.y + 46, 276, 44};
+    SDL_SetRenderDrawColor(ren, 254, 240, 138, 255);
+    SDL_RenderFillRect(ren, &bub);
+    drawText(ren, fontSmall, ais.at(aiIdx).bubble, bub.x + 10, bub.y + 10, cDark);
+}
 
         SDL_Rect river = {30, 172, 1220, 252};
         SDL_SetRenderDrawColor(ren, 14, 58, 36, 255);
