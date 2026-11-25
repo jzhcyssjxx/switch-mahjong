@@ -17,6 +17,8 @@ LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdi
 
 LIBS        := -lSDL2_image -ljpeg -lwebp -lSDL2_mixer -lSDL2_ttf -lSDL2 -lvorbisidec -logg -lmpg123 -lopusfile -lopus -lmodplug -lfreetype -lharfbuzz -lfreetype -lbz2 -lpng -lz -lEGL -lGLESv2 -lglapi -ldrm_nouveau -lnx -lm
 
+PORTLIBS    := $(DEVKITPRO)/portlibs/switch
+LIBNX       := $(DEVKITPRO)/libnx
 LIBDIRS     := $(PORTLIBS) $(LIBNX)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
