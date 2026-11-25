@@ -374,7 +374,7 @@ int main(int argc, char* argv[]) {
     Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048);
 
     SDL_Window* win = SDL_CreateWindow("Mahjong", 0, 0, 1280, 720, 0);
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
 
     TTF_Font* fontTitle = TTF_OpenFont("romfs:/font.ttf", 36);
     TTF_Font* fontBig = TTF_OpenFont("romfs:/font.ttf", 24);
