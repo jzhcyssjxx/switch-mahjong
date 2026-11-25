@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
     std::vector<Tile> wall;
     std::vector<Tile> playerHand;
     std::vector<Tile> discards;
-    AIPlayer ais = {
+    std::vector<AIPlayer> ais = {
         {"暴躁大哥", "准备好被我横扫了吗？", {}, {"这你都不信！", "快点啦，磨磨蹭蹭的！", "乱打小心点炮哦！"}},
         {"甜美辣妹", "人家今天手气超好的啦", {}, {"哎呀，手滑打错了", "这张人家不要哦", "听牌啦听牌啦！"}},
         {"淡定军师", "不急，慢慢算牌。", {}, {"嗯，稳扎稳打。", "让我想想...", "这把牌面不错。"}}
