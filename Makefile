@@ -1,12 +1,11 @@
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
-
 TARGET      := switch-mahjong
 BUILD       := build
 SOURCES     := source
 DATA        := data
 INCLUDES    := include
-ROMFS       := romfs
+ROMFS       := $(CURDIR)/romfs
 
 APP_TITLE   := 明星三缺一风格迷你麻将
 APP_AUTHOR  := HomebrewDev
