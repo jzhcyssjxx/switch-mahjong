@@ -379,7 +379,7 @@ int main(int argc, char* argv[]) {
     logStep("4: sdl libs ok");
 
     SDL_Window* win = SDL_CreateWindow("Mahjong", 0, 0, 1280, 720, 0);
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     logStep("5: renderer ok");
 
     TTF_Font* fontTitle = TTF_OpenFont("romfs:/font.ttf", 34);
