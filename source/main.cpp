@@ -356,6 +356,109 @@ void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x,
     }
     SDL_FreeSurface(surf);
 }
+void drawCircle(SDL_Renderer* ren, int cx, int cy, int r, SDL_Color col) {
+    SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, 255);
+    for (int dy = -r; dy <= r; ++dy) {
+        for (int dx = -r; dx <= r; ++dx) {
+            if (dx * dx + dy * dy <= r * r) SDL_RenderDrawPoint(ren, cx + dx, cy + dy);
+        }
+    }
+}
+
+void drawPip(SDL_Renderer* ren, int cx, int cy, int r, SDL_Color outerCol) {
+    drawCircle(ren, cx, cy, r, outerCol);
+    drawCircle(ren, cx, cy, std::max(2, r - 3), {250, 250, 245, 255});
+    drawCircle(ren, cx, cy, std::max(1, r / 2), outerCol);
+}
+
+void drawBamboo(SDL_Renderer* ren, int x, int y, int w, int h, SDL_Color col) {
+    SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, 255);
+    SDL_Rect r1 = {x, y, w, h / 2 - 1};
+    SDL_Rect r2 = {x, y + h / 2 + 1, w, h / 2 - 1};
+    SDL_RenderFillRect(ren, &r1);
+    SDL_RenderFillRect(ren, &r2);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 180);
+    SDL_RenderDrawLine(ren, x + w / 2, y + 2, x + w / 2, y + h - 2);
+}
+
+void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, const Tile& t, SDL_Rect rect, bool selected) {
+    // 1. 翡翠色立体牌背底座
+    SDL_Rect base = {rect.x, rect.y + 4, rect.w, rect.h};
+    SDL_SetRenderDrawColor(ren, 16, 110, 65, 255);
+    SDL_RenderFillRect(ren, &base);
+
+    // 2. 象牙白牌面与描边
+    SDL_SetRenderDrawColor(ren, selected ? 255 : 252, selected ? 252 : 250, selected ? 210 : 242, 255);
+    SDL_RenderFillRect(ren, &rect);
+    SDL_SetRenderDrawColor(ren, selected ? 234 : 180, selected ? 179 : 175, selected ? 8 : 160, 255);
+    SDL_RenderDrawRect(ren, &rect);
+
+    SDL_Color cRed = {200, 30, 30, 255};
+    SDL_Color cBlue = {25, 80, 190, 255};
+    SDL_Color cGreen = {22, 130, 55, 255};
+    SDL_Color cBlack = {25, 30, 40, 255};
+
+    int cx = rect.x + rect.w / 2;
+    int cy = rect.y + rect.h / 2;
+
+    if (t.suit == 0) { // 万子：上黑数字 + 下红萬
+        std::vector<std::string> nums = {"一", "二", "三", "四", "五", "六", "七", "八", "九"};
+        drawText(ren, fontSmall, nums.at(t.val - 1), cx - 10, rect.y + 8, cBlack);
+        drawText(ren, fontBig, "萬", cx - 12, cy - 2, cRed);
+    } else if (t.suit == 1) { // 筒子：传统圆饼排布
+        int r = std::max(5, rect.w / 7);
+        if (t.val == 1) {
+            drawPip(ren, cx, cy, rect.w / 3, cRed);
+            drawCircle(ren, cx, cy, rect.w / 6, cBlue);
+        } else if (t.val == 2) {
+            drawPip(ren, cx, rect.y + rect.h * 3 / 10, r + 2, cGreen);
+            drawPip(ren, cx, rect.y + rect.h * 7 / 10, r + 2, cBlue);
+        } else if (t.val == 3) {
+            drawPip(ren, rect.x + rect.w / 4, rect.y + rect.h / 5, r, cBlue);
+            drawPip(ren, cx, cy, r, cRed);
+            drawPip(ren, rect.x + rect.w * 3 / 4, rect.y + rect.h * 4 / 5, r, cGreen);
+        } else {
+            int cols = (t.val <= 6) ? 2 : 3;
+            int rows = (t.val + cols - 1) / cols;
+            for (int idx = 0; idx < t.val; ++idx) {
+                int c = idx % cols, rw = idx / cols;
+                int px = rect.x + rect.w * (c + 1) / (cols + 1);
+                int py = rect.y + rect.h * (rw + 1) / (rows + 1);
+                SDL_Color col = (idx % 3 == 0) ? cBlue : ((idx % 3 == 1) ? cRed : cGreen);
+                drawPip(ren, px, py, std::max(4, r - 1), col);
+            }
+        }
+    } else if (t.suit == 2) { // 条子：一索小鸟 / 多索竹节
+        if (t.val == 1) {
+            drawCircle(ren, cx, cy + 4, rect.w / 4, cGreen);
+            drawCircle(ren, cx - 3, cy - 8, rect.w / 6, cRed);
+            drawBamboo(ren, cx - 2, cy + 8, 5, rect.h / 4, cGreen);
+        } else {
+            int cols = (t.val <= 4) ? 2 : 3;
+            int rows = (t.val + cols - 1) / cols;
+            int bw = std::max(4, rect.w / 9);
+            int bh = std::max(14, (rect.h - 20) / rows);
+            for (int idx = 0; idx < t.val; ++idx) {
+                int c = idx % cols, rw = idx / cols;
+                int bx = rect.x + rect.w * (c + 1) / (cols + 1) - bw / 2;
+                int by = rect.y + 8 + rw * (bh + 4);
+                drawBamboo(ren, bx, by, bw, bh, (idx == t.val / 2 && t.val % 2 == 1) ? cRed : cGreen);
+            }
+        }
+    } else { // 字牌：东南西北中发白
+        if (t.val == 7) { // 白板：经典蓝色双线方框
+            SDL_Rect wb = {rect.x + 10, rect.y + 12, rect.w - 20, rect.h - 24};
+            SDL_SetRenderDrawColor(ren, cBlue.r, cBlue.g, cBlue.b, 255);
+            SDL_RenderDrawRect(ren, &wb);
+            SDL_Rect wb2 = {wb.x + 3, wb.y + 3, wb.w - 6, wb.h - 6};
+            SDL_RenderDrawRect(ren, &wb2);
+        } else {
+            std::vector<std::string> zNames = {"東", "南", "西", "北", "中", "發"};
+            SDL_Color zCol = (t.val == 5) ? cRed : ((t.val == 6) ? cGreen : cBlack);
+            drawText(ren, fontBig, zNames.at(t.val - 1), cx - 12, cy - 14, zCol);
+        }
+    }
+}
 int main(int argc, char* argv[]) {
     FILE* fLog = fopen("sdmc:/mahjong_log.txt", "w");
     auto logStep = [&](const char* msg) {
@@ -821,13 +924,11 @@ int main(int argc, char* argv[]) {
         drawText(ren, fontSmall, riverTitle, 45, 180, cWhite);
 
         int startIdx = std::max(0, (int)discards.size() - 28);
-        for (int i = startIdx; i < (int)discards.size(); ++i) {
+               for (int i = startIdx; i < (int)discards.size(); ++i) {
             int idx = i - startIdx;
             int col = idx % 14, row = idx / 14;
-            SDL_Rect tRect = {45 + col * 85, 215 + row * 96, 76, 84};
-            SDL_SetRenderDrawColor(ren, 245, 245, 220, 255);
-            SDL_RenderFillRect(ren, &tRect);
-            drawText(ren, fontBig, discards.at(i).label, tRect.x + 10, tRect.y + 24, getTileColor(discards.at(i)));
+            SDL_Rect tRect = {45 + col * 85, 215 + row * 96, 74, 82};
+            drawMahjongTile(ren, fontBig, fontSmall, discards.at(i), tRect, false);
         }
 
         if (phase == 2) {
@@ -896,13 +997,11 @@ int main(int argc, char* argv[]) {
             drawX += 12;
         }
 
-        int cardW = std::min(64, (1240 - drawX) / std::max(1, (int)playerHand.size()) - 4);
+         int cardW = std::min(64, (1240 - drawX) / std::max(1, (int)playerHand.size()) - 4);
         for (int i = 0; i < (int)playerHand.size(); ++i) {
             bool selected = (i == cursor && phase == 0);
             SDL_Rect card = {drawX + i * (cardW + 4), selected ? 505 : 535, cardW, 105};
-            SDL_SetRenderDrawColor(ren, selected ? 255 : 254, selected ? 250 : 252, selected ? 200 : 232, 255);
-            SDL_RenderFillRect(ren, &card);
-            drawText(ren, fontBig, playerHand.at(i).label, card.x + 5, card.y + 34, getTileColor(playerHand.at(i)));
+            drawMahjongTile(ren, fontBig, fontSmall, playerHand.at(i), card, selected);
         }
 
         SDL_RenderPresent(ren);
