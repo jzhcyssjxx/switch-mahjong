@@ -3,11 +3,12 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: devkitpro/devkita64:latest
+    container: devkitpro/devkita64:20240202
     steps:
       - uses: actions/checkout@v4
       - name: Get Chinese Font & Fix Images
         run: |
+          sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
           apt-get update && apt-get install -y fonts-wqy-microhei imagemagick
           mkdir -p romfs
           cp /usr/share/fonts/truetype/wqy/wqy-microhei.ttc romfs/font.ttf
