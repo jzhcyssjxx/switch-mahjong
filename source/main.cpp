@@ -469,31 +469,43 @@ int pickAIDiscard(const std::vector<Tile>& hand, int voidSuit = -1) {
     return bestIdx;
 }
 
-void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, SDL_Color color) {
+struct CachedText {
+    SDL_Texture* tex;
+    int w;
+    int h;
+};
+std::map<std::string, CachedText> gTextCache;
+
+void drawTextImpl(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, int maxW, SDL_Color color) {
     if (!font || text.empty()) return;
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
-    if (!surf) return;
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
-    if (tex) {
-        SDL_Rect dst = {x, y, surf->w, surf->h};
-        SDL_RenderCopy(ren, tex, nullptr, &dst);
-        SDL_DestroyTexture(tex);
+    std::string key = std::to_string((uintptr_t)font) + "|" + std::to_string(maxW) + "|" +
+                      std::to_string(color.r) + "_" + std::to_string(color.g) + "_" + std::to_string(color.b) + "|" + text;
+    auto it = gTextCache.find(key);
+    if (it == gTextCache.end()) {
+        if (gTextCache.size() > 600) {
+            for (auto& kv : gTextCache) if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
+            gTextCache.clear();
+        }
+        SDL_Surface* surf = (maxW > 0)
+            ? TTF_RenderUTF8_Blended_Wrapped(font, text.c_str(), color, (Uint32)maxW)
+            : TTF_RenderUTF8_Blended(font, text.c_str(), color);
+        if (!surf) return;
+        SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+        CachedText ct{tex, surf->w, surf->h};
+        SDL_FreeSurface(surf);
+        if (!tex) return;
+        it = gTextCache.emplace(key, ct).first;
     }
-    SDL_FreeSurface(surf);
+    SDL_Rect dst = {x, y, it->second.w, it->second.h};
+    SDL_RenderCopy(ren, it->second.tex, nullptr, &dst);
 }
 
-// 气泡专属自动换行渲染，防止左右两家台词超出黄色气泡框被截断
+void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, SDL_Color color) {
+    drawTextImpl(ren, font, text, x, y, 0, color);
+}
+
 void drawTextWrapped(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, int maxW, SDL_Color color) {
-    if (!font || text.empty()) return;
-    SDL_Surface* surf = TTF_RenderUTF8_Blended_Wrapped(font, text.c_str(), color, (Uint32)maxW);
-    if (!surf) return;
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
-    if (tex) {
-        SDL_Rect dst = {x, y, surf->w, surf->h};
-        SDL_RenderCopy(ren, tex, nullptr, &dst);
-        SDL_DestroyTexture(tex);
-    }
-    SDL_FreeSurface(surf);
+    drawTextImpl(ren, font, text, x, y, maxW, color);
 }
 
 void drawCircle(SDL_Renderer* ren, int cx, int cy, int r, SDL_Color col) {
@@ -872,7 +884,7 @@ int main(int argc, char* argv[]) {
     Tile lastDiscard{0, 1, ""};
     int lastDiscardFrom = -1;
     bool justDidGang = false, playerRiichiDeclared = false, playerIppatsu = false, hasWinPanel = false;
-    WinResult lastWinResult;
+    WinResult lastWinResult{3, "本局流局结算", "牌墙已摸完", {0, 0, 0, 0}, {}, 0};
     std::vector<std::string> xuezhanLogs; // 记录血战模式本局多次胡牌与刮风下雨明细
     std::vector<int> voidSuit = {-1, -1, -1, -1};     // 0=缺万 1=缺筒 2=缺条 -1=无
     std::vector<bool> hasWonSeat = {false, false, false, false}; // 血战模式：该座位是否已经胡牌
@@ -993,8 +1005,12 @@ int main(int argc, char* argv[]) {
         }
     };
         auto playerDrawAndEnterTurn = [&](bool fromGang) {
-        if (wall.empty()) {
-            phase = 3; hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
+                if (wall.empty()) {
+            phase = 3;
+            hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
+            if (hasWinPanel) {
+                lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
+            }
             statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
             return;
         }
@@ -1424,9 +1440,13 @@ int main(int argc, char* argv[]) {
                 if (turn == 3) playerDrawAndEnterTurn(false);
                 else aiTimer = SDL_GetTicks();
             } else if (SDL_GetTicks() - aiTimer >= 1500) {
-                if (wall.empty()) {
-                    phase = 3; hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
-                    statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
+            if (wall.empty()) {
+            phase = 3;
+            hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
+            if (hasWinPanel) {
+            lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
+               }
+            statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
                 } else {
                     AIPlayer& ai = ais.at(turn);
                     ai.hand.push_back(wall.back()); wall.pop_back();
@@ -1568,7 +1588,7 @@ int main(int argc, char* argv[]) {
 
         auto getAiAvatar = [&](int aiIdx) -> SDL_Texture* {
             SDL_Texture* cur = aiNormal.at(aiIdx);
-            if (phase == 3 && hasWinPanel) {
+            if (phase == 3 && hasWinPanel && lastWinResult.scoreDeltas.size() >= 4) {
                 if (lastWinResult.scoreDeltas.at(aiIdx) > 0 && aiWin.at(aiIdx)) cur = aiWin.at(aiIdx);
                 else if (lastWinResult.scoreDeltas.at(aiIdx) < 0 && aiLose.at(aiIdx)) cur = aiLose.at(aiIdx);
             }
@@ -1693,7 +1713,7 @@ int main(int argc, char* argv[]) {
             if (hasWonSeat.at(1)) wonBanner += "[对家已胡] ";
             if (hasWonSeat.at(2)) wonBanner += "[上家已胡] ";
             if (hasWonSeat.at(3)) wonBanner += "[你已胡] ";
-            if (!wonBanner.empty()) drawText(ren, fontSmall, wonBanner, river.x + 16, river.y + 422, cGold);
+            if (!wonBanner.empty()) drawText(ren, fontSmall, wonBanner, river.x + 16, river.y + 272, cGold);
         }
 
         int startIdx = std::max(0, (int)discards.size() - 52);
@@ -1852,6 +1872,7 @@ int main(int argc, char* argv[]) {
     if (gSfxHu) Mix_FreeChunk(gSfxHu);
     if (gSfxTaunt) Mix_FreeChunk(gSfxTaunt);
     for (auto* m : gBgmList) Mix_FreeMusic(m);
+    for (auto& kv : gTextCache) if (kv.second.tex) SDL_DestroyTexture(kv.second.tex); gTextCache.clear();
     if (fontTitle) TTF_CloseFont(fontTitle);
     if (fontBig) TTF_CloseFont(fontBig);
     if (fontSmall) TTF_CloseFont(fontSmall);
