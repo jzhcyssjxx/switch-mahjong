@@ -12,19 +12,7 @@
 #include <random>
 #include <string>
 #include <vector>
-
-struct Tile {
-    int suit;
-    int val;
-    std::string label;
-    bool operator==(const Tile& o) const { return suit == o.suit && val == o.val; }
-    bool operator<(const Tile& o) const { return (suit != o.suit) ? (suit < o.suit) : (val < o.val); }
-};
-
-struct Meld {
-    int type; // 0:吃 1:碰 2:明杠/加杠 3:暗杠
-    std::vector<Tile> tiles;
-};
+#include <functional>
 
 struct AIPlayer {
     std::string name;
@@ -44,6 +32,7 @@ struct AIPlayer {
     Mix_Chunk* chiVoice = nullptr;
     Mix_Chunk* pengVoice = nullptr;
     Mix_Chunk* gangVoice = nullptr;
+    Mix_Chunk* tileVoices = {};
 };
 
 struct WinResult {
@@ -51,8 +40,8 @@ struct WinResult {
     std::string title;
     std::string details;
     std::vector<int> scoreDeltas;
-    std::vector<Tile> horseTiles; // 广东麻将买马牌
-    int hitHorseCount = 0;        // 中马数量
+    std::vector<Tile> horseTiles;
+    int hitHorseCount = 0;
 };
 
 std::vector<Mix_Music*> gBgmList;
@@ -110,9 +99,11 @@ void playSfx(Mix_Chunk* sfx, Mix_Chunk* fallback = nullptr) {
     }
 }
 
-void playVoice(Mix_Chunk* voice, Mix_Chunk* fallback = nullptr) {
+void playVoice(Mix_Chunk* voice, Mix_Chunk* fallback = nullptr, bool interrupt = true) {
     Mix_Chunk* target = voice ? voice : fallback;
     if (target) {
+        if (!interrupt && Mix_Playing(0)) return;
+        Mix_HaltChannel(0);
         Mix_VolumeChunk(target, (gVolVoice * MIX_MAX_VOLUME) / 100);
         Mix_PlayChannel(0, target, 0);
     }
@@ -808,6 +799,15 @@ int main(int argc, char* argv[]) {
         ais[i].chiVoice = Mix_LoadWAV((prefix + "chi.wav").c_str());
         ais[i].pengVoice = Mix_LoadWAV((prefix + "peng.wav").c_str());
         ais[i].gangVoice = Mix_LoadWAV((prefix + "gang.wav").c_str());
+        for (int s = 0; s < 4; ++s) {
+            int maxV = (s < 3) ? 9 : 7;
+            for (int v = 1; v <= maxV; ++v) {
+                std::string sv = std::to_string(s) + "_" + std::to_string(v) + ".wav";
+                Mix_Chunk* tv = Mix_LoadWAV((prefix + "tile_" + sv).c_str());
+                if (!tv) tv = Mix_LoadWAV(("romfs:/voices/tile_" + sv).c_str());
+                ais[i].tileVoices[s][v] = tv;
+            }
+        }
     }
     logStep("8.5: character voices ok");
 
@@ -1061,6 +1061,7 @@ int main(int argc, char* argv[]) {
             if (canWinShape(playerHand, allow7, true)) statusMsg += " | 天胡！按(Y)胡牌！";
         }
     };
+    std::function<bool(const Tile&, int)> checkPlayerReactions;
     auto tryAIReactions = [&](const Tile& t, int fromSeat) -> bool {
         bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
         for (int step = 1; step <= 3; ++step) {
@@ -1072,7 +1073,7 @@ int main(int argc, char* argv[]) {
             if (canWinShape(aiTest, allow7, true)) {
                 if (gameMode != 1 || checkHasValidRiichiYaku(aiTest, ais.at(seat).melds, false, false)) {
                     ais.at(seat).bubble = ais.at(seat).huLine;
-                    playVoice(ais.at(seat).huVoice, gSfxHu);
+                    playVoice(ais.at(seat).huVoice, gSfxHu, true);
                     handleSeatWin(evaluateWinFull(seat, ais.at(seat).name, aiTest, ais.at(seat).melds, gameMode, false, false,
                                                   false, false, actualDora, fromSeat, 0, wall), false, fromSeat);
                     return true;
@@ -1086,16 +1087,16 @@ int main(int argc, char* argv[]) {
             AIPlayer& ai = ais.at(seat);
             int same = countTile(ai.hand, t);
             if (same >= 3 && !wall.empty()) {
-                discards.pop_back();
+                if (!discards.empty()) discards.pop_back();
                 for (int k = 0; k < 3; ++k) removeOneTile(ai.hand, t.suit, t.val);
                 ai.melds.push_back({2, {t, t, t, t}});
                 ai.bubble = ai.gangLine;
-                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
                 applySichuanGangMoney(seat, false);
                 ai.hand.push_back(wall.back()); wall.pop_back();
                 if (!hasVoidTiles(ai.hand, voidSuit.at(seat)) && canWinShape(ai.hand, allow7, true)) {
                     ai.bubble = ai.huLine;
-                    playVoice(ai.huVoice, gSfxHu);
+                    playVoice(ai.huVoice, gSfxHu, true);
                     handleSeatWin(evaluateWinFull(seat, ai.name, ai.hand, ai.melds, gameMode, true, true,
                                                   false, false, actualDora, -1, 0, wall), true, -1);
                     return true;
@@ -1105,29 +1106,33 @@ int main(int argc, char* argv[]) {
                 ai.hand.erase(ai.hand.begin() + dropIdx);
                 discards.push_back(out);
                 turn = nextActiveSeat(seat);
-                phase = 1; aiTimer = SDL_GetTicks();
-                statusMsg = ai.name + " 抢杠并打出 (" + out.label + ")";
+                if (!checkPlayerReactions(out, seat)) {
+                    if (turn == 3) playerDrawAndEnterTurn(false);
+                    else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = ai.name + " 抢杠并打出 (" + out.label + ")"; }
+                }
                 return true;
             }
             if (same >= 2 && ai.hand.size() >= 4) {
-                discards.pop_back();
+                if (!discards.empty()) discards.pop_back();
                 removeOneTile(ai.hand, t.suit, t.val);
                 removeOneTile(ai.hand, t.suit, t.val);
                 ai.melds.push_back({1, {t, t, t}});
                 ai.bubble = ai.pengLine;
-                playVoice(ai.pengVoice, gSfxPeng ? gSfxPeng : gSfxPlay);
+                playVoice(ai.pengVoice, gSfxPeng ? gSfxPeng : gSfxPlay, true);
                 int dropIdx = pickAIDiscard(ai.hand, voidSuit.at(seat));
                 Tile out = ai.hand.at(dropIdx);
                 ai.hand.erase(ai.hand.begin() + dropIdx);
                 discards.push_back(out);
                 turn = nextActiveSeat(seat);
-                phase = 1; aiTimer = SDL_GetTicks();
-                statusMsg = ai.name + " 碰牌后打出 (" + out.label + ")";
+                if (!checkPlayerReactions(out, seat)) {
+                    if (turn == 3) playerDrawAndEnterTurn(false);
+                    else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = ai.name + " 碰牌后打出 (" + out.label + ")"; }
+                }
                 return true;
             }
         }
         int nextSeat = (fromSeat + 1) % 4;
-        if (gameMode != 2 && nextSeat != 3 && t.suit < 3 && ais.at(nextSeat).hand.size() >= 4) {
+        if (gameMode != 2 && nextSeat != 3 && !hasWonSeat.at(nextSeat) && t.suit < 3 && ais.at(nextSeat).hand.size() >= 4) {
             AIPlayer& ai = ais.at(nextSeat);
             int v = t.val;
             int p1 = -1, p2 = -1;
@@ -1136,7 +1141,7 @@ int main(int argc, char* argv[]) {
             else if (hasTileVal(ai.hand, t.suit, v + 1) && hasTileVal(ai.hand, t.suit, v + 2)) { p1 = v + 1; p2 = v + 2; }
 
             if (p1 != -1 && (std::rand() % 100) < 65) {
-                discards.pop_back();
+                if (!discards.empty()) discards.pop_back();
                 removeOneTile(ai.hand, t.suit, p1);
                 removeOneTile(ai.hand, t.suit, p2);
                 std::vector<Tile> mt = {
@@ -1147,21 +1152,23 @@ int main(int argc, char* argv[]) {
                 std::sort(mt.begin(), mt.end());
                 ai.melds.push_back({0, mt});
                 ai.bubble = ai.chiLine;
-                playVoice(ai.chiVoice, gSfxChi ? gSfxChi : gSfxPlay);
+                playVoice(ai.chiVoice, gSfxChi ? gSfxChi : gSfxPlay, true);
                 int dropIdx = pickAIDiscard(ai.hand);
                 Tile out = ai.hand.at(dropIdx);
                 ai.hand.erase(ai.hand.begin() + dropIdx);
                 discards.push_back(out);
-                turn = (nextSeat + 1) % 4;
-                phase = 1; aiTimer = SDL_GetTicks();
-                statusMsg = ai.name + " 吃牌后打出 (" + out.label + ")";
+                turn = nextActiveSeat(nextSeat);
+                if (!checkPlayerReactions(out, nextSeat)) {
+                    if (turn == 3) playerDrawAndEnterTurn(false);
+                    else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = ai.name + " 吃牌后打出 (" + out.label + ")"; }
+                }
                 return true;
             }
         }
         return false;
     };
 
-    auto checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
+    checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
         if (hasWonSeat.at(3)) return false;
         optHu = false; optGang = false; optPeng = false; optChis.clear();
         bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
@@ -1399,11 +1406,11 @@ int main(int argc, char* argv[]) {
         }
 
         else if (phase == 1) {
-            if (hasWonSeat.at(turn)) {
+            if (turn < 0 || turn >= 3 || hasWonSeat.at(turn)) {
                 turn = nextActiveSeat(turn);
                 if (turn == 3) playerDrawAndEnterTurn(false);
                 else aiTimer = SDL_GetTicks();
-            } else if (SDL_GetTicks() - aiTimer >= 1150) {
+            } else if (SDL_GetTicks() - aiTimer >= 1500) {
                 if (wall.empty()) {
                     phase = 3; hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
                     statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
@@ -1418,7 +1425,7 @@ int main(int argc, char* argv[]) {
                             for (int k = 0; k < 4; ++k) removeOneTile(ai.hand, t.suit, t.val);
                             ai.melds.push_back({3, {t, t, t, t}});
                             ai.bubble = ai.gangLine;
-                            playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                            playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
                             applySichuanGangMoney(turn, true);
                             ai.hand.push_back(wall.back()); wall.pop_back();
                             aiDidSelfGang = true; break;
@@ -1431,7 +1438,7 @@ int main(int argc, char* argv[]) {
                                 removeOneTile(ai.hand, ft.suit, ft.val);
                                 m.type = 2; m.tiles.push_back(ft);
                                 ai.bubble = ai.gangLine;
-                                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
                                 applySichuanGangMoney(turn, false);
                                 ai.hand.push_back(wall.back()); wall.pop_back();
                                 aiDidSelfGang = true; break;
@@ -1442,7 +1449,7 @@ int main(int argc, char* argv[]) {
                     bool aiNoVoid = !hasVoidTiles(ai.hand, voidSuit.at(turn));
                     if (aiNoVoid && canWinShape(ai.hand, allow7, true)) {
                         ai.bubble = ai.huLine;
-                        playVoice(ai.huVoice, gSfxHu);
+                        playVoice(ai.huVoice, gSfxHu, true);
                         handleSeatWin(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, gameMode, true, aiDidSelfGang,
                                                       false, false, actualDora, -1, 0, wall), true, -1);
                     } else {
@@ -1452,9 +1459,19 @@ int main(int argc, char* argv[]) {
                         discards.push_back(out);
 
                         if (!aiDidSelfGang) {
-                            int lineIdx = std::rand() % (int)ai.lines.size();
-                            ai.bubble = ai.lines.at(lineIdx);
-                            playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
+                            if (std::rand() % 2 == 0) {
+                                int lineIdx = std::rand() % (int)ai.lines.size();
+                                ai.bubble = ai.lines.at(lineIdx);
+                                playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay, false);
+                            } else {
+                                if (turn == 0) ai.bubble = "打一张【" + out.label + "】~";
+                                else if (turn == 1) ai.bubble = "出牌，【" + out.label + "】。";
+                                else ai.bubble = "接招吧，【" + out.label + "】！";
+
+                                Mix_Chunk* tv = ai.tileVoices[out.suit][out.val];
+                                if (tv) playVoice(tv, gSfxPlay, false);
+                                else playSfx(gSfxPlay);
+                            }
                         }
 
                         int whoDiscarded = turn;
@@ -1469,6 +1486,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+        }
         } else if (phase == 2) {
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
@@ -1810,8 +1828,12 @@ int main(int argc, char* argv[]) {
         if (ai.loseVoice) Mix_FreeChunk(ai.loseVoice);
         if (ai.chiVoice) Mix_FreeChunk(ai.chiVoice);
         if (ai.pengVoice) Mix_FreeChunk(ai.pengVoice);
-        if (ai.gangVoice) Mix_FreeChunk(ai.gangVoice);
+               if (ai.gangVoice) Mix_FreeChunk(ai.gangVoice);
+        for (int s = 0; s < 4; ++s)
+            for (int v = 1; v <= 9; ++v)
+                if (ai.tileVoices[s][v]) Mix_FreeChunk(ai.tileVoices[s][v]);
     }
+    
     if (gSfxPlay) Mix_FreeChunk(gSfxPlay);
     if (gSfxChi) Mix_FreeChunk(gSfxChi);
     if (gSfxPeng) Mix_FreeChunk(gSfxPeng);
