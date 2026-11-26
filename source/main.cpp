@@ -554,11 +554,9 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
     if (t.suit == 0) {
         std::vector<std::string> nums = {"一", "二", "三", "四", "五", "六", "七", "八", "九"};
         if (rect.w < 38) {
-            // 副露区小牌：上下严格分离，绝不重叠
             drawText(ren, fontSmall, nums.at(t.val - 1), rect.x + (rect.w - 16) / 2, rect.y + 1, cBlack);
             drawText(ren, fontSmall, "萬", rect.x + (rect.w - 16) / 2, rect.y + rect.h / 2 - 1, cRed);
         } else {
-            // 手牌与牌河大牌：拉开上下间距并严格水平居中
             int topY = rect.y + rect.h * 12 / 100;
             int botY = rect.y + rect.h * 52 / 100;
             drawText(ren, fontSmall, nums.at(t.val - 1), cx - 9, topY, cBlack);
@@ -596,38 +594,11 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
             drawPip(ren, xR + 3, yT + 14, r - 1, cGreen);
             drawPip(ren, xL, yM + 10, r - 1, cRed); drawPip(ren, xR, yM + 10, r - 1, cRed);
             drawPip(ren, xL, yB + 3, r - 1, cRed); drawPip(ren, xR, yB + 3, r - 1, cRed);
-         } else if (t.val == 8) {
-            // 实牌经典八条：左右各 2 根直立外柱 + 中间上下对称双斜八字
-            int topY1 = rect.y + rect.h * 14 / 100;
-            int topY2 = rect.y + rect.h * 44 / 100;
-            int botY1 = rect.y + rect.h * 56 / 100;
-            int botY2 = rect.y + rect.h * 86 / 100;
-            int col1 = rect.x + rect.w * 24 / 100 - bw / 2;
-            int col4 = rect.x + rect.w * 76 / 100 - bw / 2;
-            int midL = rect.x + rect.w * 34 / 100;
-            int midR = rect.x + rect.w * 66 / 100;
-            int hHalf = topY2 - topY1;
-
-            // 左右四根直立外柱（绿色）
-            drawBamboo(ren, col1, topY1, bw, hHalf, cGreen);
-            drawBamboo(ren, col4, topY1, bw, hHalf, cGreen);
-            drawBamboo(ren, col1, botY1, bw, hHalf, cGreen);
-            drawBamboo(ren, col4, botY1, bw, hHalf, cGreen);
-
-            // 辅助斜竹节函数（画出真实八条中间的倒V与正V斜杠）
-            auto drawSlant = [&](int x1, int y1, int x2, int y2, SDL_Color col) {
-                SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, 255);
-                for (int dx = -bw / 2; dx <= bw / 2; ++dx) {
-                    SDL_RenderDrawLine(ren, x1 + dx, y1, x2 + dx, y2);
-                }
-            };
-            // 上半部分倒 V（顶部尖顶，红/绿撞色）
-            drawSlant(cx - 1, topY1 + 2, midL, topY2 - 2, cRed);
-            drawSlant(cx + 1, topY1 + 2, midR, topY2 - 2, cGreen);
-            // 下半部分正 V（底部尖底，红/绿撞色）
-            drawSlant(midL, botY1 + 2, cx - 1, botY2 - 2, cGreen);
-            drawSlant(midR, botY1 + 2, cx + 1, botY2 - 2, cRed);
-
+        } else if (t.val == 8) {
+            for (int row = 0; row < 4; ++row) {
+                int py = rect.y + rect.h * (row + 1) / 5;
+                drawPip(ren, xL, py, r - 1, cBlue);
+                drawPip(ren, xR, py, r - 1, cBlue);
             }
         } else if (t.val == 9) {
             for (int col = 0; col < 3; ++col) {
@@ -678,13 +649,31 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
                 drawBamboo(ren, bx, rect.y + 16 + bh3 * 2, bw, bh3, cGreen);
             }
         } else if (t.val == 8) {
-            for (int col = 0; col < 3; ++col) {
-                int bx = rect.x + rect.w * (col + 1) / 4 - bw / 2;
-                drawBamboo(ren, bx, rect.y + 8, bw, bh3, col == 1 ? cRed : cGreen);
-                drawBamboo(ren, bx, rect.y + 16 + bh3 * 2, bw, bh3, col == 1 ? cRed : cGreen);
-            }
-            drawBamboo(ren, xL, rect.y + 12 + bh3, bw, bh3, cGreen);
-            drawBamboo(ren, xR, rect.y + 12 + bh3, bw, bh3, cGreen);
+            int topY1 = rect.y + rect.h * 14 / 100;
+            int topY2 = rect.y + rect.h * 44 / 100;
+            int botY1 = rect.y + rect.h * 56 / 100;
+            int botY2 = rect.y + rect.h * 86 / 100;
+            int col1 = rect.x + rect.w * 24 / 100 - bw / 2;
+            int col4 = rect.x + rect.w * 76 / 100 - bw / 2;
+            int midL = rect.x + rect.w * 34 / 100;
+            int midR = rect.x + rect.w * 66 / 100;
+            int hHalf = topY2 - topY1;
+
+            drawBamboo(ren, col1, topY1, bw, hHalf, cGreen);
+            drawBamboo(ren, col4, topY1, bw, hHalf, cGreen);
+            drawBamboo(ren, col1, botY1, bw, hHalf, cGreen);
+            drawBamboo(ren, col4, botY1, bw, hHalf, cGreen);
+
+            auto drawSlant = [&](int x1, int y1, int x2, int y2, SDL_Color col) {
+                SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, 255);
+                for (int dx = -bw / 2; dx <= bw / 2; ++dx) {
+                    SDL_RenderDrawLine(ren, x1 + dx, y1, x2 + dx, y2);
+                }
+            };
+            drawSlant(cx - 1, topY1 + 2, midL, topY2 - 2, cRed);
+            drawSlant(cx + 1, topY1 + 2, midR, topY2 - 2, cGreen);
+            drawSlant(midL, botY1 + 2, cx - 1, botY2 - 2, cGreen);
+            drawSlant(midR, botY1 + 2, cx + 1, botY2 - 2, cRed);
         } else if (t.val == 9) {
             for (int row = 0; row < 3; ++row) {
                 int by = rect.y + 8 + row * (bh3 + 4);
