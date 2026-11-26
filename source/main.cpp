@@ -14,6 +14,19 @@
 #include <vector>
 #include <functional>
 
+struct Tile {
+    int suit;
+    int val;
+    std::string label;
+    bool operator==(const Tile& o) const { return suit == o.suit && val == o.val; }
+    bool operator<(const Tile& o) const { return (suit != o.suit) ? (suit < o.suit) : (val < o.val); }
+};
+
+struct Meld {
+    int type; // 0:吃 1:碰 2:明杠/加杠 3:暗杠
+    std::vector<Tile> tiles;
+};
+
 struct AIPlayer {
     std::string name;
     std::string bubble;
