@@ -22,7 +22,7 @@ struct Tile {
 };
 
 struct Meld {
-    int type;
+    int type; // 0:吃 1:碰 2:明杠/加杠 3:暗杠
     std::vector<Tile> tiles;
 };
 
@@ -35,9 +35,15 @@ struct AIPlayer {
     std::vector<std::string> lines;
     std::string huLine;
     std::string loseLine;
+    std::string chiLine;
+    std::string pengLine;
+    std::string gangLine;
     std::vector<Mix_Chunk*> lineVoices;
     Mix_Chunk* huVoice = nullptr;
     Mix_Chunk* loseVoice = nullptr;
+    Mix_Chunk* chiVoice = nullptr;
+    Mix_Chunk* pengVoice = nullptr;
+    Mix_Chunk* gangVoice = nullptr;
 };
 
 struct WinResult {
@@ -56,7 +62,6 @@ Mix_Chunk* gSfxGang = nullptr;
 Mix_Chunk* gSfxHu = nullptr;
 Mix_Chunk* gSfxTaunt = nullptr;
 
-// 默认音量百分比 (0 ~ 100)
 int gVolBgm = 45;
 int gVolVoice = 100;
 int gVolSfx = 80;
@@ -95,7 +100,6 @@ void playRandomBgm() {
     Mix_PlayMusic(gBgmList.at(gCurrentBgm), 1);
 }
 
-// 播放打牌操作音效（受 gVolSfx 控制）
 void playSfx(Mix_Chunk* sfx, Mix_Chunk* fallback = nullptr) {
     Mix_Chunk* target = sfx ? sfx : fallback;
     if (target) {
@@ -104,7 +108,6 @@ void playSfx(Mix_Chunk* sfx, Mix_Chunk* fallback = nullptr) {
     }
 }
 
-// 播放 AI 角色语音（受 gVolVoice 控制）
 void playVoice(Mix_Chunk* voice, Mix_Chunk* fallback = nullptr) {
     Mix_Chunk* target = voice ? voice : fallback;
     if (target) {
@@ -205,7 +208,6 @@ bool canWinShape(const std::vector<Tile>& tiles, bool isRiichiMode, bool allowCh
     }
     return false;
 }
-
 void analyzeTraits(const std::vector<Tile>& hand, const std::vector<Meld>& melds,
                    bool& hasDragon, bool& isTanyao, bool& isFlush, bool& isHalfFlush) {
     std::map<int, int> cnt;
@@ -386,6 +388,20 @@ int pickAIDiscard(const std::vector<Tile>& hand) {
 void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, SDL_Color color) {
     if (!font || text.empty()) return;
     SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
+    if (!surf) return;
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+    if (tex) {
+        SDL_Rect dst = {x, y, surf->w, surf->h};
+        SDL_RenderCopy(ren, tex, nullptr, &dst);
+        SDL_DestroyTexture(tex);
+    }
+    SDL_FreeSurface(surf);
+}
+
+// 气泡专属自动换行渲染，防止左右两家台词超出黄色气泡框被截断
+void drawTextWrapped(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, int maxW, SDL_Color color) {
+    if (!font || text.empty()) return;
+    SDL_Surface* surf = TTF_RenderUTF8_Blended_Wrapped(font, text.c_str(), color, (Uint32)maxW);
     if (!surf) return;
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
     if (tex) {
@@ -635,6 +651,7 @@ int main(int argc, char* argv[]) {
     gSfxHu = Mix_LoadWAV("romfs:/voices/hu.wav");
     gSfxTaunt = Mix_LoadWAV("romfs:/voices/taunt.wav");
     logStep("7: base audio ok");
+
     std::vector<SDL_Texture*> aiNormal = {
         IMG_LoadTexture(ren, "romfs:/ai0.png"),
         IMG_LoadTexture(ren, "romfs:/ai1.png"),
@@ -674,19 +691,28 @@ int main(int argc, char* argv[]) {
             "下家・甜美辣妹", "人家今天手气超好的啦", 10000, {}, {},
             {"哎呀，手滑打错了", "这张人家不要哦", "听牌啦听牌啦！"},
             "哈哈！我胡牌啦，给钱给钱！",
-            "呜呜，人家点炮输惨了..."
+            "呜呜，人家点炮输惨了...",
+            "吃！顺手牵羊啦~",
+            "碰！人家也要凑一对~",
+            "开杠！再补一张牌~"
         },
         {
             "对家・淡定军师", "不急，慢慢算牌。", 10000, {}, {},
             {"嗯，稳扎稳打。", "让我想想...", "这把牌面不错。"},
             "承让了，这局我胡牌。",
-            "失算了，竟然被你胡了..."
+            "失算了，竟然被你胡了...",
+            "妙计，正好成顺。",
+            "承让，这张我碰了。",
+            "开杠，局势已定。"
         },
         {
             "上家・暴躁大哥", "准备好被我横扫了吗？", 10000, {}, {},
             {"这你都不信！", "快点啦，磨磨蹭蹭的！", "乱打小心点炮哦！"},
             "哈哈哈！老子胡牌了，拿钱来！",
-            "可恶！这把居然输给你了！"
+            "可恶！这把居然输给你了！",
+            "吃！算你小子识相！",
+            "碰！都别跟老子抢！",
+            "杠！准备接招吧！"
         }
     };
 
@@ -699,9 +725,11 @@ int main(int argc, char* argv[]) {
         };
         ais[i].huVoice = Mix_LoadWAV((prefix + "hu.wav").c_str());
         ais[i].loseVoice = Mix_LoadWAV((prefix + "lose.wav").c_str());
+        ais[i].chiVoice = Mix_LoadWAV((prefix + "chi.wav").c_str());
+        ais[i].pengVoice = Mix_LoadWAV((prefix + "peng.wav").c_str());
+        ais[i].gangVoice = Mix_LoadWAV((prefix + "gang.wav").c_str());
     }
     logStep("8.5: character voices ok");
-
     auto drawSettingsOverlay = [&]() {
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 185);
@@ -756,6 +784,12 @@ int main(int argc, char* argv[]) {
     std::string statusMsg = "";
     Uint32 aiTimer = 0;
 
+    auto removeOneTile = [&](std::vector<Tile>& h, int suit, int val) {
+        for (auto it = h.begin(); it != h.end(); ++it) {
+            if (it->suit == suit && it->val == val) { h.erase(it); return; }
+        }
+    };
+
     auto applyWinResult = [&](const WinResult& res) {
         lastWinResult = res;
         for (int i = 0; i < 3; ++i) ais.at(i).score += res.scoreDeltas.at(i);
@@ -768,8 +802,7 @@ int main(int argc, char* argv[]) {
 
     auto playerDrawAndEnterTurn = [&](bool fromGang) {
         if (wall.empty()) {
-            phase = 3;
-            hasWinPanel = false;
+            phase = 3; hasWinPanel = false;
             statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
             return;
         }
@@ -777,9 +810,7 @@ int main(int argc, char* argv[]) {
         wall.pop_back();
         if (!playerRiichiDeclared) std::sort(playerHand.begin(), playerHand.end());
         cursor = std::max(0, (int)playerHand.size() - 1);
-        turn = 3;
-        phase = 0;
-        justDidGang = fromGang;
+        turn = 3; phase = 0; justDidGang = fromGang;
         if (playerRiichiDeclared) {
             statusMsg = "(立直中) 自动摸牌：按(A)摸切打出";
             if (canWinShape(playerHand, true, true)) statusMsg += " | 按(Y)立直自摸！";
@@ -793,26 +824,19 @@ int main(int argc, char* argv[]) {
         int startChips = isRiichiMode ? 25000 : 10000;
         int initTiles = isRiichiMode ? 13 : 16;
         if (resetAll) {
-            playerScore = startChips;
-            roundNum = 1;
-            streakCount = 0;
+            playerScore = startChips; roundNum = 1; streakCount = 0;
             for (int i = 0; i < 3; ++i) ais.at(i).score = startChips;
         } else {
             roundNum++;
         }
         wall = buildWall();
         if (isRiichiMode) {
-            doraIndicator = wall.back();
-            wall.pop_back();
+            doraIndicator = wall.back(); wall.pop_back();
             actualDora = getNextDoraTile(doraIndicator);
         }
-        playerHand.clear();
-        playerMelds.clear();
-        discards.clear();
-        hasWinPanel = false;
-        justDidGang = false;
-        playerRiichiDeclared = false;
-        playerIppatsu = false;
+        playerHand.clear(); playerMelds.clear(); discards.clear();
+        hasWinPanel = false; justDidGang = false;
+        playerRiichiDeclared = false; playerIppatsu = false;
 
         for (int i = 0; i < 3; ++i) {
             ais.at(i).hand.clear();
@@ -824,11 +848,104 @@ int main(int argc, char* argv[]) {
         }
         playerHand.push_back(wall.back()); wall.pop_back();
         std::sort(playerHand.begin(), playerHand.end());
-        cursor = 0;
-        turn = 3;
-        phase = 0;
+        cursor = 0; turn = 3; phase = 0;
         statusMsg = isRiichiMode ? "(日本立直麻将) 选牌按(A)出牌" : "(台湾16张麻将) 选牌按(A)出牌";
         if (canWinShape(playerHand, isRiichiMode, true)) statusMsg += " | 天胡！按(Y)胡牌！";
+    };
+    auto tryAIReactions = [&](const Tile& t, int fromSeat) -> bool {
+        for (int step = 1; step <= 3; ++step) {
+            int seat = (fromSeat + step) % 4;
+            if (seat == 3 || seat == fromSeat) continue;
+            auto aiTest = ais.at(seat).hand;
+            aiTest.push_back(t);
+            if (canWinShape(aiTest, isRiichiMode, true)) {
+                if (!isRiichiMode || checkHasValidRiichiYaku(aiTest, ais.at(seat).melds, false, false)) {
+                    ais.at(seat).bubble = ais.at(seat).huLine;
+                    playVoice(ais.at(seat).huVoice, gSfxHu);
+                    applyWinResult(evaluateWinFull(seat, ais.at(seat).name, aiTest, ais.at(seat).melds, isRiichiMode, false, false,
+                                                   false, false, actualDora, fromSeat, 0));
+                    return true;
+                }
+            }
+        }
+        for (int step = 1; step <= 3; ++step) {
+            int seat = (fromSeat + step) % 4;
+            if (seat == 3 || seat == fromSeat) continue;
+            AIPlayer& ai = ais.at(seat);
+            int same = countTile(ai.hand, t);
+            if (same >= 3 && !wall.empty()) {
+                discards.pop_back();
+                for (int k = 0; k < 3; ++k) removeOneTile(ai.hand, t.suit, t.val);
+                ai.melds.push_back({2, {t, t, t, t}});
+                ai.bubble = ai.gangLine;
+                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                ai.hand.push_back(wall.back()); wall.pop_back();
+                if (canWinShape(ai.hand, isRiichiMode, true)) {
+                    ai.bubble = ai.huLine;
+                    playVoice(ai.huVoice, gSfxHu);
+                    applyWinResult(evaluateWinFull(seat, ai.name, ai.hand, ai.melds, isRiichiMode, true, true,
+                                                   false, false, actualDora, -1, 0));
+                    return true;
+                }
+                int dropIdx = pickAIDiscard(ai.hand);
+                Tile out = ai.hand.at(dropIdx);
+                ai.hand.erase(ai.hand.begin() + dropIdx);
+                discards.push_back(out);
+                turn = (seat + 1) % 4;
+                phase = 1; aiTimer = SDL_GetTicks();
+                statusMsg = ai.name + " 抢杠并打出 (" + out.label + ")";
+                return true;
+            }
+            if (same >= 2 && ai.hand.size() >= 4) {
+                discards.pop_back();
+                removeOneTile(ai.hand, t.suit, t.val);
+                removeOneTile(ai.hand, t.suit, t.val);
+                ai.melds.push_back({1, {t, t, t}});
+                ai.bubble = ai.pengLine;
+                playVoice(ai.pengVoice, gSfxPeng ? gSfxPeng : gSfxPlay);
+                int dropIdx = pickAIDiscard(ai.hand);
+                Tile out = ai.hand.at(dropIdx);
+                ai.hand.erase(ai.hand.begin() + dropIdx);
+                discards.push_back(out);
+                turn = (seat + 1) % 4;
+                phase = 1; aiTimer = SDL_GetTicks();
+                statusMsg = ai.name + " 碰牌后打出 (" + out.label + ")";
+                return true;
+            }
+        }
+        int nextSeat = (fromSeat + 1) % 4;
+        if (nextSeat != 3 && t.suit < 3 && ais.at(nextSeat).hand.size() >= 4) {
+            AIPlayer& ai = ais.at(nextSeat);
+            int v = t.val;
+            int p1 = -1, p2 = -1;
+            if (hasTileVal(ai.hand, t.suit, v - 2) && hasTileVal(ai.hand, t.suit, v - 1)) { p1 = v - 2; p2 = v - 1; }
+            else if (hasTileVal(ai.hand, t.suit, v - 1) && hasTileVal(ai.hand, t.suit, v + 1)) { p1 = v - 1; p2 = v + 1; }
+            else if (hasTileVal(ai.hand, t.suit, v + 1) && hasTileVal(ai.hand, t.suit, v + 2)) { p1 = v + 1; p2 = v + 2; }
+
+            if (p1 != -1 && (std::rand() % 100) < 65) {
+                discards.pop_back();
+                removeOneTile(ai.hand, t.suit, p1);
+                removeOneTile(ai.hand, t.suit, p2);
+                std::vector<Tile> mt = {
+                    {t.suit, p1, makeTileLabel(t.suit, p1)},
+                    t,
+                    {t.suit, p2, makeTileLabel(t.suit, p2)}
+                };
+                std::sort(mt.begin(), mt.end());
+                ai.melds.push_back({0, mt});
+                ai.bubble = ai.chiLine;
+                playVoice(ai.chiVoice, gSfxChi ? gSfxChi : gSfxPlay);
+                int dropIdx = pickAIDiscard(ai.hand);
+                Tile out = ai.hand.at(dropIdx);
+                ai.hand.erase(ai.hand.begin() + dropIdx);
+                discards.push_back(out);
+                turn = (nextSeat + 1) % 4;
+                phase = 1; aiTimer = SDL_GetTicks();
+                statusMsg = ai.name + " 吃牌后打出 (" + out.label + ")";
+                return true;
+            }
+        }
+        return false;
     };
 
     auto checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
@@ -863,12 +980,6 @@ int main(int argc, char* argv[]) {
         }
         return false;
     };
-
-    auto removeOneTile = [&](std::vector<Tile>& h, int suit, int val) {
-        for (auto it = h.begin(); it != h.end(); ++it) {
-            if (it->suit == suit && it->val == val) { h.erase(it); return; }
-        }
-    };
     logStep("9: entering main loop");
     bool loggedFirstFrame = false;
 
@@ -880,7 +991,6 @@ int main(int argc, char* argv[]) {
 
         if (!gBgmList.empty() && (!Mix_PlayingMusic() || (kDown & HidNpadButton_ZL))) playRandomBgm();
 
-        // 按 (+) 号随时打开或关闭“音量与游戏设置”弹窗
         if (kDown & HidNpadButton_Plus) {
             if (showSettings) saveVolumeConfig();
             showSettings = !showSettings;
@@ -889,7 +999,6 @@ int main(int argc, char* argv[]) {
         if (showSettings) {
             if (kDown & HidNpadButton_Up) settingsCursor = (settingsCursor + 3) % 4;
             if (kDown & HidNpadButton_Down) settingsCursor = (settingsCursor + 1) % 4;
-
             int delta = 0;
             if (kDown & HidNpadButton_Left) delta = -10;
             if (kDown & HidNpadButton_Right) delta = 10;
@@ -900,22 +1009,15 @@ int main(int argc, char* argv[]) {
                     applyBgmVolume();
                 } else if (settingsCursor == 1) {
                     gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
-                    playVoice(ais[0].lineVoices[0], gSfxTaunt);
+                    playVoice(ais.lineVoices, gSfxTaunt);
                 } else if (settingsCursor == 2) {
                     gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
                     playSfx(gSfxPlay);
                 }
                 saveVolumeConfig();
             }
-
-            if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
-                saveVolumeConfig();
-                break;
-            }
-            if (kDown & HidNpadButton_B) {
-                saveVolumeConfig();
-                showSettings = false;
-            }
+            if ((kDown & HidNpadButton_A) && settingsCursor == 3) { saveVolumeConfig(); break; }
+            if (kDown & HidNpadButton_B) { saveVolumeConfig(); showSettings = false; }
 
             SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
             SDL_RenderClear(ren);
@@ -935,11 +1037,9 @@ int main(int argc, char* argv[]) {
                 playSfx(gSfxPeng, gSfxPlay);
                 startNewGame(true);
             }
-
             SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
             SDL_RenderClear(ren);
             SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255}, cDark = {20, 20, 20, 255};
-
             drawText(ren, fontTitle, "明星三缺一风格・全能麻将", 410, 85, cGold);
             drawText(ren, fontSmall, "方向键选玩法 | (A)开始 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 150, cWhite);
 
@@ -964,6 +1064,7 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(ren);
             continue;
         }
+
         if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
         if (kDown & HidNpadButton_R) startNewGame((kHeld & HidNpadButton_L) != 0);
 
@@ -981,16 +1082,16 @@ int main(int argc, char* argv[]) {
                 auto tempHand = playerHand;
                 tempHand.erase(tempHand.begin() + cursor);
                 if (menQing && playerScore >= 1000 && !getTenpaiTiles(tempHand, true).empty()) {
-                    playerRiichiDeclared = true;
-                    playerIppatsu = true;
-                    playerScore -= 1000;
+                    playerRiichiDeclared = true; playerIppatsu = true; playerScore -= 1000;
                     playSfx(gSfxGang, gSfxPeng);
                     Tile out = playerHand.at(cursor);
                     playerHand.erase(playerHand.begin() + cursor);
                     discards.push_back(out);
                     std::sort(playerHand.begin(), playerHand.end());
-                    turn = 0; phase = 1; aiTimer = SDL_GetTicks();
-                    statusMsg = "(立直宣言！) 投入1000点立直棒，等待牌友出牌...";
+                    if (!tryAIReactions(out, 3)) {
+                        turn = 0; phase = 1; aiTimer = SDL_GetTicks();
+                        statusMsg = "(立直宣言！) 投入1000点立直棒，等待牌友出牌...";
+                    }
                 } else {
                     statusMsg = "无法立直(需门前清、点数>=1000且打出当前牌后听牌)";
                 }
@@ -998,7 +1099,6 @@ int main(int argc, char* argv[]) {
                 int loserIdx = std::rand() % 3;
                 ais.at(loserIdx).bubble = ais.at(loserIdx).loseLine;
                 playVoice(ais.at(loserIdx).loseVoice, gSfxHu);
-
                 applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, true, justDidGang,
                                                playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount));
             } else if (!playerRiichiDeclared && (kDown & HidNpadButton_L)) {
@@ -1035,25 +1135,13 @@ int main(int argc, char* argv[]) {
                 std::sort(playerHand.begin(), playerHand.end());
                 if (cursor >= (int)playerHand.size()) cursor = std::max(0, (int)playerHand.size() - 1);
 
-                bool aiStoleWin = false;
-                for (int i = 0; i < 3; ++i) {
-                    auto aiTest = ais.at(i).hand;
-                    aiTest.push_back(out);
-                    if (canWinShape(aiTest, isRiichiMode, true)) {
-                        ais.at(i).bubble = ais.at(i).huLine;
-                        playVoice(ais.at(i).huVoice, gSfxHu);
-
-                        applyWinResult(evaluateWinFull(i, ais.at(i).name, aiTest, ais.at(i).melds, isRiichiMode, false, false,
-                                                       false, false, actualDora, 3, 0));
-                        aiStoleWin = true; break;
-                    }
-                }
-                if (!aiStoleWin) {
+                if (!tryAIReactions(out, 3)) {
                     turn = 0; phase = 1; aiTimer = SDL_GetTicks();
                     statusMsg = "等待牌友出牌...";
                 }
             }
-        } else if (phase == 1) {
+        }
+        else if (phase == 1) {
             if (SDL_GetTicks() - aiTimer >= 420) {
                 if (wall.empty()) {
                     phase = 3; hasWinPanel = false;
@@ -1061,11 +1149,36 @@ int main(int argc, char* argv[]) {
                 } else {
                     AIPlayer& ai = ais.at(turn);
                     ai.hand.push_back(wall.back()); wall.pop_back();
+                    bool aiDidSelfGang = false;
+
+                    for (const auto& t : ai.hand) {
+                        if (countTile(ai.hand, t) == 4 && !wall.empty()) {
+                            for (int k = 0; k < 4; ++k) removeOneTile(ai.hand, t.suit, t.val);
+                            ai.melds.push_back({3, {t, t, t, t}});
+                            ai.bubble = ai.gangLine;
+                            playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                            ai.hand.push_back(wall.back()); wall.pop_back();
+                            aiDidSelfGang = true; break;
+                        }
+                    }
+                    if (!aiDidSelfGang && !wall.empty()) {
+                        for (auto& m : ai.melds) {
+                            Tile ft = m.tiles.at(0);
+                            if (m.type == 1 && hasTileVal(ai.hand, ft.suit, ft.val)) {
+                                removeOneTile(ai.hand, ft.suit, ft.val);
+                                m.type = 2; m.tiles.push_back(ft);
+                                ai.bubble = ai.gangLine;
+                                playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
+                                ai.hand.push_back(wall.back()); wall.pop_back();
+                                aiDidSelfGang = true; break;
+                            }
+                        }
+                    }
+
                     if (canWinShape(ai.hand, isRiichiMode, true)) {
                         ai.bubble = ai.huLine;
                         playVoice(ai.huVoice, gSfxHu);
-
-                        applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, isRiichiMode, true, false,
+                        applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, isRiichiMode, true, aiDidSelfGang,
                                                        false, false, actualDora, -1, 0));
                     } else {
                         int dropIdx = pickAIDiscard(ai.hand);
@@ -1073,32 +1186,34 @@ int main(int argc, char* argv[]) {
                         ai.hand.erase(ai.hand.begin() + dropIdx);
                         discards.push_back(out);
 
-                        int lineIdx = std::rand() % (int)ai.lines.size();
-                        ai.bubble = ai.lines.at(lineIdx);
-                        playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
+                        if (!aiDidSelfGang) {
+                            int lineIdx = std::rand() % (int)ai.lines.size();
+                            ai.bubble = ai.lines.at(lineIdx);
+                            playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
+                        }
 
                         int whoDiscarded = turn;
                         turn = (turn + 1) % 4;
+
                         if (!checkPlayerReactions(out, whoDiscarded)) {
-                            if (turn == 3) playerDrawAndEnterTurn(false);
-                            else aiTimer = SDL_GetTicks();
+                            if (!tryAIReactions(out, whoDiscarded)) {
+                                if (turn == 3) playerDrawAndEnterTurn(false);
+                                else aiTimer = SDL_GetTicks();
+                            }
                         }
                     }
                 }
             }
-        }
-        else if (phase == 2) {
+        } else if (phase == 2) {
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
                 std::sort(playerHand.begin(), playerHand.end());
-
                 if (lastDiscardFrom >= 0 && lastDiscardFrom < 3) {
                     ais.at(lastDiscardFrom).bubble = ais.at(lastDiscardFrom).loseLine;
                     playVoice(ais.at(lastDiscardFrom).loseVoice, gSfxHu);
                 } else {
                     playSfx(gSfxHu);
                 }
-
                 applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, false, false,
                                                playerRiichiDeclared, playerIppatsu, actualDora, lastDiscardFrom, streakCount));
             } else if ((kDown & HidNpadButton_L) && optGang) {
@@ -1134,11 +1249,12 @@ int main(int argc, char* argv[]) {
                 cursor = 0; turn = 3; phase = 0; justDidGang = false;
                 statusMsg = "吃牌成功！请选择一张牌打出";
             } else if (kDown & HidNpadButton_B) {
-                if (turn == 3) playerDrawAndEnterTurn(false);
-                else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = "等待牌友出牌..."; }
+                if (!tryAIReactions(lastDiscard, lastDiscardFrom)) {
+                    if (turn == 3) playerDrawAndEnterTurn(false);
+                    else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = "等待牌友出牌..."; }
+                }
             }
         }
-
         SDL_SetRenderDrawColor(ren, isRiichiMode ? 18 : 20, isRiichiMode ? 65 : 83, isRiichiMode ? 75 : 45, 255);
         SDL_RenderClear(ren);
 
@@ -1170,15 +1286,25 @@ int main(int argc, char* argv[]) {
             SDL_Rect bub = {topBox.x + 90, topBox.y + 36, 308, 40};
             SDL_SetRenderDrawColor(ren, 254, 240, 138, 255);
             SDL_RenderFillRect(ren, &bub);
-            drawText(ren, fontSmall, ais.at(1).bubble, bub.x + 10, bub.y + 8, cDark);
+            drawTextWrapped(ren, fontSmall, ais.at(1).bubble, bub.x + 10, bub.y + 8, 290, cDark);
 
             int cnt = (int)ais.at(1).hand.size();
             int tw = 22, th = 34;
             int startX = 640 - (cnt * (tw + 2)) / 2;
-            for (int k = 0; k < cnt; ++k) {
-                drawTileBack3D(ren, {startX + k * (tw + 2), 126, tw, th}, 0);
+            for (int k = 0; k < cnt; ++k) drawTileBack3D(ren, {startX + k * (tw + 2), 126, tw, th}, 0);
+
+            int mx = 855;
+            for (const auto& m : ais.at(1).melds) {
+                for (size_t k = 0; k < m.tiles.size(); ++k) {
+                    SDL_Rect mr = {mx, 62, 26, 42};
+                    if (m.type == 3 && (k == 0 || k == 3)) drawTileBack3D(ren, mr, 0);
+                    else drawMahjongTile(ren, fontSmall, fontSmall, m.tiles.at(k), mr, false);
+                    mx += 27;
+                }
+                mx += 6;
             }
         }
+
         {
             SDL_Rect leftBox = {14, 150, 198, 315};
             SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
@@ -1194,13 +1320,21 @@ int main(int argc, char* argv[]) {
             SDL_Rect bub = {leftBox.x + 10, leftBox.y + 208, 178, 92};
             SDL_SetRenderDrawColor(ren, 254, 240, 138, 255);
             SDL_RenderFillRect(ren, &bub);
-            drawText(ren, fontSmall, ais.at(2).bubble, bub.x + 6, bub.y + 32, cDark);
+            drawTextWrapped(ren, fontSmall, ais.at(2).bubble, bub.x + 10, bub.y + 18, 158, cDark);
 
             int cnt = (int)ais.at(2).hand.size();
             int tw = 34, th = 16;
             int startY = 315 - (cnt * (th + 2)) / 2;
-            for (int k = 0; k < cnt; ++k) {
-                drawTileBack3D(ren, {220, startY + k * (th + 2), tw, th}, 1);
+            for (int k = 0; k < cnt; ++k) drawTileBack3D(ren, {220, startY + k * (th + 2), tw, th}, 1);
+
+            int mx = 14, my = 472;
+            for (const auto& m : ais.at(2).melds) {
+                for (size_t k = 0; k < m.tiles.size(); ++k) {
+                    SDL_Rect mr = {mx + (int)k * 27, my, 26, 42};
+                    if (m.type == 3 && (k == 0 || k == 3)) drawTileBack3D(ren, mr, 0);
+                    else drawMahjongTile(ren, fontSmall, fontSmall, m.tiles.at(k), mr, false);
+                }
+                my += 45;
             }
         }
 
@@ -1219,16 +1353,23 @@ int main(int argc, char* argv[]) {
             SDL_Rect bub = {rightBox.x + 10, rightBox.y + 208, 178, 92};
             SDL_SetRenderDrawColor(ren, 254, 240, 138, 255);
             SDL_RenderFillRect(ren, &bub);
-            drawText(ren, fontSmall, ais.at(0).bubble, bub.x + 6, bub.y + 32, cDark);
+            drawTextWrapped(ren, fontSmall, ais.at(0).bubble, bub.x + 10, bub.y + 18, 158, cDark);
 
             int cnt = (int)ais.at(0).hand.size();
             int tw = 34, th = 16;
             int startY = 315 - (cnt * (th + 2)) / 2;
-            for (int k = 0; k < cnt; ++k) {
-                drawTileBack3D(ren, {1026, startY + k * (th + 2), tw, th}, 2);
+            for (int k = 0; k < cnt; ++k) drawTileBack3D(ren, {1026, startY + k * (th + 2), tw, th}, 2);
+
+            int mx = 1068, my = 472;
+            for (const auto& m : ais.at(0).melds) {
+                for (size_t k = 0; k < m.tiles.size(); ++k) {
+                    SDL_Rect mr = {mx + (int)k * 27, my, 26, 42};
+                    if (m.type == 3 && (k == 0 || k == 3)) drawTileBack3D(ren, mr, 0);
+                    else drawMahjongTile(ren, fontSmall, fontSmall, m.tiles.at(k), mr, false);
+                }
+                my += 45;
             }
         }
-
         SDL_Rect river = {268, 168, 744, 298};
         SDL_SetRenderDrawColor(ren, 14, 58, 36, 255);
         SDL_RenderFillRect(ren, &river);
@@ -1306,11 +1447,8 @@ int main(int argc, char* argv[]) {
             for (size_t k = 0; k < m.tiles.size(); ++k) {
                 bool hidden = (m.type == 3 && (k == 0 || k == 3));
                 SDL_Rect mRect = {drawX, 565, 50, 82};
-                if (hidden) {
-                    drawTileBack3D(ren, mRect, 0);
-                } else {
-                    drawMahjongTile(ren, fontSmall, fontSmall, m.tiles.at(k), mRect, false);
-                }
+                if (hidden) drawTileBack3D(ren, mRect, 0);
+                else drawMahjongTile(ren, fontSmall, fontSmall, m.tiles.at(k), mRect, false);
                 drawX += 53;
             }
             drawX += 12;
@@ -1335,6 +1473,9 @@ int main(int argc, char* argv[]) {
         for (auto* v : ai.lineVoices) if (v) Mix_FreeChunk(v);
         if (ai.huVoice) Mix_FreeChunk(ai.huVoice);
         if (ai.loseVoice) Mix_FreeChunk(ai.loseVoice);
+        if (ai.chiVoice) Mix_FreeChunk(ai.chiVoice);
+        if (ai.pengVoice) Mix_FreeChunk(ai.pengVoice);
+        if (ai.gangVoice) Mix_FreeChunk(ai.gangVoice);
     }
     if (gSfxPlay) Mix_FreeChunk(gSfxPlay);
     if (gSfxChi) Mix_FreeChunk(gSfxChi);
