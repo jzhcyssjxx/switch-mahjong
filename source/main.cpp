@@ -400,7 +400,8 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
         }
         res.details = desc;
     }
-
+    return res;
+}
 bool checkHasValidRiichiYaku(const std::vector<Tile>& hand, const std::vector<Meld>& melds, bool isSelfDraw, bool declaredRiichi) {
     if (declaredRiichi || isSelfDraw) return true;
     bool menQing = true, hasChow = false;
