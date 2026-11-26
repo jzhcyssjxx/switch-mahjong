@@ -1833,7 +1833,6 @@ int main(int argc, char* argv[]) {
             for (int v = 1; v <= 9; ++v)
                 if (ai.tileVoices[s][v]) Mix_FreeChunk(ai.tileVoices[s][v]);
     }
-    
     if (gSfxPlay) Mix_FreeChunk(gSfxPlay);
     if (gSfxChi) Mix_FreeChunk(gSfxChi);
     if (gSfxPeng) Mix_FreeChunk(gSfxPeng);
