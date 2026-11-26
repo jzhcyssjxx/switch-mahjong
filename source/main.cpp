@@ -114,7 +114,7 @@ void playVoice(Mix_Chunk* voice, Mix_Chunk* fallback = nullptr) {
     Mix_Chunk* target = voice ? voice : fallback;
     if (target) {
         Mix_VolumeChunk(target, (gVolVoice * MIX_MAX_VOLUME) / 100);
-        Mix_PlayChannel(-1, target, 0);
+        Mix_PlayChannel(0, target, 0);
     }
 }
 std::string makeTileLabel(int suit, int val) {
@@ -972,7 +972,6 @@ int main(int argc, char* argv[]) {
             statusMsg = res.title + "！血战继续，轮到下一家...";
             if (nxt == 3) {
                 playerHand.push_back(wall.back()); wall.pop_back();
-                std::sort(playerHand.begin(), playerHand.end());
                 cursor = std::max(0, (int)playerHand.size() - 1);
                 turn = 3; phase = 0; justDidGang = false;
             } else {
@@ -988,7 +987,6 @@ int main(int argc, char* argv[]) {
         }
         playerHand.push_back(wall.back());
         wall.pop_back();
-        if (!playerRiichiDeclared) std::sort(playerHand.begin(), playerHand.end());
         cursor = std::max(0, (int)playerHand.size() - 1);
         turn = 3; phase = 0; justDidGang = fromGang;
         bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
@@ -1405,7 +1403,7 @@ int main(int argc, char* argv[]) {
                 turn = nextActiveSeat(turn);
                 if (turn == 3) playerDrawAndEnterTurn(false);
                 else aiTimer = SDL_GetTicks();
-            } else if (SDL_GetTicks() - aiTimer >= 420) {
+            } else if (SDL_GetTicks() - aiTimer >= 1150) {
                 if (wall.empty()) {
                     phase = 3; hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
                     statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
@@ -1789,13 +1787,15 @@ int main(int argc, char* argv[]) {
             drawX += 12;
         }
 
-        int cardW = std::min(64, (1240 - drawX) / std::max(1, (int)playerHand.size()) - 4);
+        bool hasDrawnTile = (phase == 0 && (playerHand.size() % 3 == 2));
+        int availW = 1240 - drawX - (hasDrawnTile ? 18 : 0);
+        int cardW = std::min(64, availW / std::max(1, (int)playerHand.size()) - 4);
         for (int i = 0; i < (int)playerHand.size(); ++i) {
             bool selected = (i == cursor && phase == 0);
-            SDL_Rect card = {drawX + i * (cardW + 4), selected ? 515 : 545, cardW, 105};
+            int extraGap = (hasDrawnTile && i == (int)playerHand.size() - 1) ? 18 : 0;
+            SDL_Rect card = {drawX + i * (cardW + 4) + extraGap, selected ? 515 : 545, cardW, 105};
             drawMahjongTile(ren, fontBig, fontSmall, playerHand.at(i), card, selected);
         }
-
         SDL_RenderPresent(ren);
     }
 
