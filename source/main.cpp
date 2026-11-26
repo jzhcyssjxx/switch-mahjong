@@ -45,7 +45,7 @@ struct AIPlayer {
     Mix_Chunk* chiVoice = nullptr;
     Mix_Chunk* pengVoice = nullptr;
     Mix_Chunk* gangVoice = nullptr;
-    Mix_Chunk* tileVoices = {};
+    Mix_Chunk* tileVoices[4][10] = {};
 };
 
 struct WinResult {
@@ -1499,7 +1499,6 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-        }
         } else if (phase == 2) {
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
