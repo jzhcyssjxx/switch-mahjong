@@ -154,8 +154,9 @@ std::vector<Tile> buildWall(bool noHonors = false) {
             for (int c = 0; c < 4; ++c) deck.push_back({3, v, makeTileLabel(3, v)});
         }
     }
-    std::random_device rd;
-    std::mt19937 g(rd());
+    u64 hwRand = 0;
+    randomGet(&hwRand, sizeof(hwRand));
+    static std::mt19937_64 g(svcGetSystemTick() ^ hwRand ^ (u64)std::time(nullptr));
     std::shuffle(deck.begin(), deck.end(), g);
     return deck;
 }
@@ -706,7 +707,7 @@ int main(int argc, char* argv[]) {
 
     loadVolumeConfig();
 
-    std::srand((unsigned int)std::time(nullptr));
+    std::srand((unsigned int)(svcGetSystemTick() ^ std::time(nullptr)));
     romfsInit();
     logStep("2: romfs ok");
 
