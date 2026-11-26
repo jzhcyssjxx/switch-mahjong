@@ -46,6 +46,7 @@ struct WinResult {
     std::string details;
     std::vector<int> scoreDeltas;
 };
+
 std::vector<Mix_Music*> gBgmList;
 int gCurrentBgm = -1;
 Mix_Chunk* gSfxPlay = nullptr;
@@ -55,20 +56,62 @@ Mix_Chunk* gSfxGang = nullptr;
 Mix_Chunk* gSfxHu = nullptr;
 Mix_Chunk* gSfxTaunt = nullptr;
 
+// 默认音量百分比 (0 ~ 100)
+int gVolBgm = 45;
+int gVolVoice = 100;
+int gVolSfx = 80;
+
+void loadVolumeConfig() {
+    FILE* f = fopen("sdmc:/mahjong_cfg.txt", "r");
+    if (f) {
+        int b = 45, v = 100, s = 80;
+        if (fscanf(f, "%d %d %d", &b, &v, &s) == 3) {
+            gVolBgm = std::max(0, std::min(100, b));
+            gVolVoice = std::max(0, std::min(100, v));
+            gVolSfx = std::max(0, std::min(100, s));
+        }
+        fclose(f);
+    }
+}
+
+void saveVolumeConfig() {
+    FILE* f = fopen("sdmc:/mahjong_cfg.txt", "w");
+    if (f) {
+        fprintf(f, "%d %d %d\n", gVolBgm, gVolVoice, gVolSfx);
+        fclose(f);
+    }
+}
+
+void applyBgmVolume() {
+    Mix_VolumeMusic((gVolBgm * MIX_MAX_VOLUME) / 100);
+}
+
 void playRandomBgm() {
     if (gBgmList.empty()) return;
     int nextIdx = std::rand() % (int)gBgmList.size();
     if (gBgmList.size() > 1 && nextIdx == gCurrentBgm) nextIdx = (nextIdx + 1) % (int)gBgmList.size();
     gCurrentBgm = nextIdx;
-    Mix_VolumeMusic(56);
+    applyBgmVolume();
     Mix_PlayMusic(gBgmList.at(gCurrentBgm), 1);
 }
 
+// 播放打牌操作音效（受 gVolSfx 控制）
 void playSfx(Mix_Chunk* sfx, Mix_Chunk* fallback = nullptr) {
-    if (sfx) Mix_PlayChannel(-1, sfx, 0);
-    else if (fallback) Mix_PlayChannel(-1, fallback, 0);
+    Mix_Chunk* target = sfx ? sfx : fallback;
+    if (target) {
+        Mix_VolumeChunk(target, (gVolSfx * MIX_MAX_VOLUME) / 100);
+        Mix_PlayChannel(-1, target, 0);
+    }
 }
 
+// 播放 AI 角色语音（受 gVolVoice 控制）
+void playVoice(Mix_Chunk* voice, Mix_Chunk* fallback = nullptr) {
+    Mix_Chunk* target = voice ? voice : fallback;
+    if (target) {
+        Mix_VolumeChunk(target, (gVolVoice * MIX_MAX_VOLUME) / 100);
+        Mix_PlayChannel(-1, target, 0);
+    }
+}
 std::string makeTileLabel(int suit, int val) {
     std::vector<std::string> zNames = {"东", "南", "西", "北", "中", "发", "白"};
     if (suit == 0) return std::to_string(val) + "万";
@@ -162,6 +205,7 @@ bool canWinShape(const std::vector<Tile>& tiles, bool isRiichiMode, bool allowCh
     }
     return false;
 }
+
 void analyzeTraits(const std::vector<Tile>& hand, const std::vector<Meld>& melds,
                    bool& hasDragon, bool& isTanyao, bool& isFlush, bool& isHalfFlush) {
     std::map<int, int> cnt;
@@ -281,7 +325,6 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
     }
     return res;
 }
-
 bool checkHasValidRiichiYaku(const std::vector<Tile>& hand, const std::vector<Meld>& melds, bool isSelfDraw, bool declaredRiichi) {
     if (declaredRiichi || isSelfDraw) return true;
     bool menQing = true, hasChow = false;
@@ -339,6 +382,7 @@ int pickAIDiscard(const std::vector<Tile>& hand) {
     }
     return bestIdx;
 }
+
 void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, SDL_Color color) {
     if (!font || text.empty()) return;
     SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
@@ -376,7 +420,6 @@ void drawBamboo(SDL_Renderer* ren, int x, int y, int w, int h, SDL_Color col) {
     SDL_SetRenderDrawColor(ren, 255, 255, 255, 180);
     SDL_RenderDrawLine(ren, x + w / 2, y + 2, x + w / 2, y + h - 2);
 }
-
 void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, const Tile& t, SDL_Rect rect, bool selected) {
     SDL_Rect base = {rect.x, rect.y + 4, rect.w, rect.h};
     SDL_SetRenderDrawColor(ren, 16, 110, 65, 255);
@@ -549,6 +592,8 @@ int main(int argc, char* argv[]) {
     };
     logStep("1: start main");
 
+    loadVolumeConfig();
+
     std::srand((unsigned int)std::time(nullptr));
     romfsInit();
     logStep("2: romfs ok");
@@ -590,7 +635,6 @@ int main(int argc, char* argv[]) {
     gSfxHu = Mix_LoadWAV("romfs:/voices/hu.wav");
     gSfxTaunt = Mix_LoadWAV("romfs:/voices/taunt.wav");
     logStep("7: base audio ok");
-
     std::vector<SDL_Texture*> aiNormal = {
         IMG_LoadTexture(ren, "romfs:/ai0.png"),
         IMG_LoadTexture(ren, "romfs:/ai1.png"),
@@ -611,6 +655,8 @@ int main(int argc, char* argv[]) {
     bool inMenu = true;
     int menuCursor = 0;
     bool isRiichiMode = false;
+    bool showSettings = false;
+    int settingsCursor = 0;
 
     std::vector<Tile> wall;
     std::vector<Tile> playerHand;
@@ -655,6 +701,51 @@ int main(int argc, char* argv[]) {
         ais[i].loseVoice = Mix_LoadWAV((prefix + "lose.wav").c_str());
     }
     logStep("8.5: character voices ok");
+
+    auto drawSettingsOverlay = [&]() {
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 185);
+        SDL_Rect full = {0, 0, 1280, 720};
+        SDL_RenderFillRect(ren, &full);
+
+        SDL_Rect box = {320, 145, 640, 430};
+        SDL_SetRenderDrawColor(ren, 16, 52, 34, 250);
+        SDL_RenderFillRect(ren, &box);
+        SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+        SDL_RenderDrawRect(ren, &box);
+
+        SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255};
+        SDL_Color cCyan = {103, 232, 249, 255}, cDark = {20, 20, 20, 255};
+
+        drawText(ren, fontTitle, "音量与游戏设置", box.x + 195, box.y + 22, cGold);
+        drawText(ren, fontSmall, "上下选项目 | 左右调音量(自动保存) | 按(+)或(B)返回", box.x + 85, box.y + 72, cCyan);
+
+        std::vector<std::string> labels = {"背景音乐 (BGM)", "角色语音 (AI配音)", "打牌音效 (吃碰杠)", "保存并退出游戏"};
+        std::vector<int> vals = {gVolBgm, gVolVoice, gVolSfx, -1};
+
+        for (int i = 0; i < 4; ++i) {
+            int rowY = box.y + 125 + i * 68;
+            bool sel = (settingsCursor == i);
+            SDL_Rect rowRect = {box.x + 40, rowY, 560, 52};
+            SDL_SetRenderDrawColor(ren, sel ? 254 : 24, sel ? 240 : 75, sel ? 138 : 48, 255);
+            SDL_RenderFillRect(ren, &rowRect);
+
+            drawText(ren, fontBig, labels[i], rowRect.x + 20, rowRect.y + 12, sel ? cDark : cWhite);
+            if (vals[i] >= 0) {
+                SDL_Rect barBg = {rowRect.x + 265, rowRect.y + 16, 180, 20};
+                SDL_SetRenderDrawColor(ren, 10, 30, 20, 255);
+                SDL_RenderFillRect(ren, &barBg);
+
+                SDL_Rect barFg = {barBg.x + 2, barBg.y + 2, (176 * vals[i]) / 100, 16};
+                SDL_SetRenderDrawColor(ren, sel ? 22 : 251, sel ? 163 : 191, sel ? 74 : 36, 255);
+                SDL_RenderFillRect(ren, &barFg);
+
+                drawText(ren, fontBig, std::to_string(vals[i]) + "%", barBg.x + 192, rowRect.y + 12, sel ? cDark : cGold);
+            } else {
+                drawText(ren, fontSmall, "按 (A) 确认退出", rowRect.x + 360, rowRect.y + 15, sel ? cDark : cCyan);
+            }
+        }
+    };
     int cursor = 0, turn = 3, phase = 0;
     Tile lastDiscard{0, 1, ""};
     int lastDiscardFrom = -1;
@@ -787,8 +878,51 @@ int main(int argc, char* argv[]) {
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
 
-        if (kDown & HidNpadButton_Plus) break;
         if (!gBgmList.empty() && (!Mix_PlayingMusic() || (kDown & HidNpadButton_ZL))) playRandomBgm();
+
+        // 按 (+) 号随时打开或关闭“音量与游戏设置”弹窗
+        if (kDown & HidNpadButton_Plus) {
+            if (showSettings) saveVolumeConfig();
+            showSettings = !showSettings;
+        }
+
+        if (showSettings) {
+            if (kDown & HidNpadButton_Up) settingsCursor = (settingsCursor + 3) % 4;
+            if (kDown & HidNpadButton_Down) settingsCursor = (settingsCursor + 1) % 4;
+
+            int delta = 0;
+            if (kDown & HidNpadButton_Left) delta = -10;
+            if (kDown & HidNpadButton_Right) delta = 10;
+
+            if (delta != 0) {
+                if (settingsCursor == 0) {
+                    gVolBgm = std::max(0, std::min(100, gVolBgm + delta));
+                    applyBgmVolume();
+                } else if (settingsCursor == 1) {
+                    gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
+                    playVoice(ais[0].lineVoices[0], gSfxTaunt);
+                } else if (settingsCursor == 2) {
+                    gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
+                    playSfx(gSfxPlay);
+                }
+                saveVolumeConfig();
+            }
+
+            if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
+                saveVolumeConfig();
+                break;
+            }
+            if (kDown & HidNpadButton_B) {
+                saveVolumeConfig();
+                showSettings = false;
+            }
+
+            SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
+            SDL_RenderClear(ren);
+            drawSettingsOverlay();
+            SDL_RenderPresent(ren);
+            continue;
+        }
 
         if (inMenu) {
             if (kDown & (HidNpadButton_Up | HidNpadButton_Down | HidNpadButton_Left | HidNpadButton_Right)) {
@@ -807,7 +941,7 @@ int main(int argc, char* argv[]) {
             SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255}, cDark = {20, 20, 20, 255};
 
             drawText(ren, fontTitle, "明星三缺一风格・全能麻将", 410, 85, cGold);
-            drawText(ren, fontSmall, "方向键选择玩法，按(A)开始 | 按(ZL)切换背景音乐 | 局中按(-)返回大厅", 270, 150, cWhite);
+            drawText(ren, fontSmall, "方向键选玩法 | (A)开始 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 150, cWhite);
 
             SDL_Rect card0 = {180, 225, 420, 320};
             SDL_SetRenderDrawColor(ren, menuCursor == 0 ? 254 : 20, menuCursor == 0 ? 240 : 83, menuCursor == 0 ? 138 : 45, 255);
@@ -830,7 +964,6 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(ren);
             continue;
         }
-
         if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
         if (kDown & HidNpadButton_R) startNewGame((kHeld & HidNpadButton_L) != 0);
 
@@ -864,7 +997,7 @@ int main(int argc, char* argv[]) {
             } else if ((kDown & HidNpadButton_Y) && canWinShape(playerHand, isRiichiMode, true)) {
                 int loserIdx = std::rand() % 3;
                 ais.at(loserIdx).bubble = ais.at(loserIdx).loseLine;
-                playSfx(ais.at(loserIdx).loseVoice, gSfxHu);
+                playVoice(ais.at(loserIdx).loseVoice, gSfxHu);
 
                 applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, true, justDidGang,
                                                playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount));
@@ -908,7 +1041,7 @@ int main(int argc, char* argv[]) {
                     aiTest.push_back(out);
                     if (canWinShape(aiTest, isRiichiMode, true)) {
                         ais.at(i).bubble = ais.at(i).huLine;
-                        playSfx(ais.at(i).huVoice, gSfxHu);
+                        playVoice(ais.at(i).huVoice, gSfxHu);
 
                         applyWinResult(evaluateWinFull(i, ais.at(i).name, aiTest, ais.at(i).melds, isRiichiMode, false, false,
                                                        false, false, actualDora, 3, 0));
@@ -920,8 +1053,7 @@ int main(int argc, char* argv[]) {
                     statusMsg = "等待牌友出牌...";
                 }
             }
-        }
-        else if (phase == 1) {
+        } else if (phase == 1) {
             if (SDL_GetTicks() - aiTimer >= 420) {
                 if (wall.empty()) {
                     phase = 3; hasWinPanel = false;
@@ -931,7 +1063,7 @@ int main(int argc, char* argv[]) {
                     ai.hand.push_back(wall.back()); wall.pop_back();
                     if (canWinShape(ai.hand, isRiichiMode, true)) {
                         ai.bubble = ai.huLine;
-                        playSfx(ai.huVoice, gSfxHu);
+                        playVoice(ai.huVoice, gSfxHu);
 
                         applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, isRiichiMode, true, false,
                                                        false, false, actualDora, -1, 0));
@@ -943,7 +1075,7 @@ int main(int argc, char* argv[]) {
 
                         int lineIdx = std::rand() % (int)ai.lines.size();
                         ai.bubble = ai.lines.at(lineIdx);
-                        playSfx(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
+                        playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
 
                         int whoDiscarded = turn;
                         turn = (turn + 1) % 4;
@@ -954,14 +1086,15 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-        } else if (phase == 2) {
+        }
+        else if (phase == 2) {
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
                 std::sort(playerHand.begin(), playerHand.end());
 
                 if (lastDiscardFrom >= 0 && lastDiscardFrom < 3) {
                     ais.at(lastDiscardFrom).bubble = ais.at(lastDiscardFrom).loseLine;
-                    playSfx(ais.at(lastDiscardFrom).loseVoice, gSfxHu);
+                    playVoice(ais.at(lastDiscardFrom).loseVoice, gSfxHu);
                 } else {
                     playSfx(gSfxHu);
                 }
@@ -1013,8 +1146,8 @@ int main(int argc, char* argv[]) {
         SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255}, cGold = {251, 191, 36, 255};
 
         drawText(ren, fontSmall, statusMsg, 25, 8, cYellow);
-        std::string topRight = "第" + std::to_string(roundNum) + "局 | 点数:" + std::to_string(playerScore) + " | 余牌:" + std::to_string(wall.size()) + " | (-)换模式";
-        drawText(ren, fontSmall, topRight, 720, 8, cGold);
+        std::string topRight = "第" + std::to_string(roundNum) + "局 | 点数:" + std::to_string(playerScore) + " | 余牌:" + std::to_string(wall.size()) + " | (+)设置 | (-)大厅";
+        drawText(ren, fontSmall, topRight, 650, 8, cGold);
 
         auto getAiAvatar = [&](int aiIdx) -> SDL_Texture* {
             SDL_Texture* cur = aiNormal.at(aiIdx);
@@ -1193,6 +1326,7 @@ int main(int argc, char* argv[]) {
         SDL_RenderPresent(ren);
     }
 
+    saveVolumeConfig();
     if (fLog) fclose(fLog);
     for (auto* t : aiNormal) if (t) SDL_DestroyTexture(t);
     for (auto* t : aiWin) if (t) SDL_DestroyTexture(t);
