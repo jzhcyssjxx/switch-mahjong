@@ -6,14 +6,42 @@ jobs:
     container: devkitpro/devkita64:20240202
     steps:
       - uses: actions/checkout@v4
-      - name: Get Chinese Font & Fix Images
+      - name: Get Font, Fix Icon & Generate Dealer Tile Voices
         run: |
           sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
-          apt-get update && apt-get install -y fonts-wqy-microhei imagemagick
-          mkdir -p romfs
+          apt-get update && apt-get install -y fonts-wqy-microhei imagemagick python3-pip ffmpeg
+          pip3 install --break-system-packages edge-tts || pip3 install edge-tts
+          mkdir -p romfs/voices
           cp /usr/share/fonts/truetype/wqy/wqy-microhei.ttc romfs/font.ttf
           mogrify -resize 160x160 romfs/*.png || true
           if [ -f icon.jpg ]; then convert icon.jpg -resize 256x256! -background black -alpha remove -colorspace sRGB -type TrueColor -strip -interlace none -quality 90 JPEG:icon.jpg; fi
+          python3 - << 'EOF'
+          import asyncio, os, subprocess
+          import edge_tts
+
+          nums = ["一","二","三","四","五","六","七","八","九"]
+          tiles = []
+          for v in range(1, 10):
+              tiles.append((f"tile_0_{v}", nums[v-1] + "万"))
+              tiles.append((f"tile_1_{v}", nums[v-1] + "筒"))
+              tiles.append((f"tile_2_{v}", nums[v-1] + "条"))
+          honors = ["东风","南风","西风","北风","红中","发财","白板"]
+          for v, name in enumerate(honors, 1):
+              tiles.append((f"tile_3_{v}", name))
+
+          async def main():
+              for fname, text in tiles:
+                  wav_path = f"romfs/voices/{fname}.wav"
+                  if os.path.exists(wav_path):
+                      continue
+                  mp3_path = f"/tmp/{fname}.mp3"
+                  comm = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural", rate="+15%")
+                  await comm.save(mp3_path)
+                  subprocess.run(["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", wav_path],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+          asyncio.run(main())
+          EOF
       - name: Make NRO
         run: make
       - name: Upload NRO
