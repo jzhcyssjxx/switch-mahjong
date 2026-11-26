@@ -33,6 +33,11 @@ struct AIPlayer {
     std::vector<Tile> hand;
     std::vector<Meld> melds;
     std::vector<std::string> lines;
+    std::string huLine;
+    std::string loseLine;
+    std::vector<Mix_Chunk*> lineVoices;
+    Mix_Chunk* huVoice = nullptr;
+    Mix_Chunk* loseVoice = nullptr;
 };
 
 struct WinResult {
@@ -41,7 +46,6 @@ struct WinResult {
     std::string details;
     std::vector<int> scoreDeltas;
 };
-
 std::vector<Mix_Music*> gBgmList;
 int gCurrentBgm = -1;
 Mix_Chunk* gSfxPlay = nullptr;
@@ -72,6 +76,7 @@ std::string makeTileLabel(int suit, int val) {
     if (suit == 2) return std::to_string(val) + "条";
     return zNames.at(val - 1);
 }
+
 Tile getNextDoraTile(const Tile& ind) {
     if (ind.suit < 3) {
         int nv = (ind.val % 9) + 1;
@@ -227,8 +232,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
             res.scoreDeltas.at(winnerSeat) = pay;
         }
         res.details = desc;
-    }
-    else {
+    } else {
         int han = 0;
         std::string desc = "";
         auto addYaku = [&](const std::string& yName, int h) {
@@ -277,6 +281,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
     }
     return res;
 }
+
 bool checkHasValidRiichiYaku(const std::vector<Tile>& hand, const std::vector<Meld>& melds, bool isSelfDraw, bool declaredRiichi) {
     if (declaredRiichi || isSelfDraw) return true;
     bool menQing = true, hasChow = false;
@@ -334,16 +339,6 @@ int pickAIDiscard(const std::vector<Tile>& hand) {
     }
     return bestIdx;
 }
-
-SDL_Color getTileColor(const Tile& t) {
-    if (t.suit == 0) return {185, 28, 28, 255};
-    if (t.suit == 1) return {29, 78, 216, 255};
-    if (t.suit == 2) return {21, 128, 61, 255};
-    if (t.val == 5)  return {185, 28, 28, 255};
-    if (t.val == 6)  return {21, 128, 61, 255};
-    return {30, 41, 59, 255};
-}
-
 void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x, int y, SDL_Color color) {
     if (!font || text.empty()) return;
     SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
@@ -356,6 +351,7 @@ void drawText(SDL_Renderer* ren, TTF_Font* font, const std::string& text, int x,
     }
     SDL_FreeSurface(surf);
 }
+
 void drawCircle(SDL_Renderer* ren, int cx, int cy, int r, SDL_Color col) {
     SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, 255);
     for (int dy = -r; dy <= r; ++dy) {
@@ -382,12 +378,10 @@ void drawBamboo(SDL_Renderer* ren, int x, int y, int w, int h, SDL_Color col) {
 }
 
 void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, const Tile& t, SDL_Rect rect, bool selected) {
-    // 1. 翡翠色立体牌背底座
     SDL_Rect base = {rect.x, rect.y + 4, rect.w, rect.h};
     SDL_SetRenderDrawColor(ren, 16, 110, 65, 255);
     SDL_RenderFillRect(ren, &base);
 
-    // 2. 象牙白牌面与描边
     SDL_SetRenderDrawColor(ren, selected ? 255 : 252, selected ? 252 : 250, selected ? 210 : 242, 255);
     SDL_RenderFillRect(ren, &rect);
     SDL_SetRenderDrawColor(ren, selected ? 234 : 180, selected ? 179 : 175, selected ? 8 : 160, 255);
@@ -401,11 +395,11 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
     int cx = rect.x + rect.w / 2;
     int cy = rect.y + rect.h / 2;
 
-    if (t.suit == 0) { // 万子：上黑数字 + 下红萬
+    if (t.suit == 0) {
         std::vector<std::string> nums = {"一", "二", "三", "四", "五", "六", "七", "八", "九"};
         drawText(ren, fontSmall, nums.at(t.val - 1), cx - 10, rect.y + 8, cBlack);
         drawText(ren, fontBig, "萬", cx - 12, cy - 2, cRed);
-    } else if (t.suit == 1) { // 筒子：100% 传统真实排布
+    } else if (t.suit == 1) {
         int r = std::max(5, rect.w / 7);
         int xL = rect.x + rect.w * 3 / 10, xR = rect.x + rect.w * 7 / 10;
         int yT = rect.y + rect.h * 22 / 100, yM = cy, yB = rect.y + rect.h * 78 / 100;
@@ -423,27 +417,27 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
         } else if (t.val == 4) {
             drawPip(ren, xL, yT + 4, r + 1, cBlue); drawPip(ren, xR, yT + 4, r + 1, cGreen);
             drawPip(ren, xL, yB - 4, r + 1, cGreen); drawPip(ren, xR, yB - 4, r + 1, cBlue);
-        } else if (t.val == 5) { // 四角蓝绿 + 中心红饼
+        } else if (t.val == 5) {
             drawPip(ren, xL, yT + 2, r, cBlue); drawPip(ren, xR, yT + 2, r, cGreen);
             drawPip(ren, cx, cy, r, cRed);
             drawPip(ren, xL, yB - 2, r, cGreen); drawPip(ren, xR, yB - 2, r, cBlue);
-        } else if (t.val == 6) { // 上二绿 + 下四红
+        } else if (t.val == 6) {
             drawPip(ren, xL, yT, r, cGreen); drawPip(ren, xR, yT, r, cGreen);
             drawPip(ren, xL, yM + 6, r, cRed); drawPip(ren, xR, yM + 6, r, cRed);
             drawPip(ren, xL, yB + 2, r, cRed); drawPip(ren, xR, yB + 2, r, cRed);
-        } else if (t.val == 7) { // 上三斜绿 + 下四红
+        } else if (t.val == 7) {
             drawPip(ren, xL - 3, yT - 4, r - 1, cGreen);
             drawPip(ren, cx, yT + 5, r - 1, cGreen);
             drawPip(ren, xR + 3, yT + 14, r - 1, cGreen);
             drawPip(ren, xL, yM + 10, r - 1, cRed); drawPip(ren, xR, yM + 10, r - 1, cRed);
             drawPip(ren, xL, yB + 3, r - 1, cRed); drawPip(ren, xR, yB + 3, r - 1, cRed);
-        } else if (t.val == 8) { // 两列四行全蓝
+        } else if (t.val == 8) {
             for (int row = 0; row < 4; ++row) {
                 int py = rect.y + rect.h * (row + 1) / 5;
                 drawPip(ren, xL, py, r - 1, cBlue);
                 drawPip(ren, xR, py, r - 1, cBlue);
             }
-        } else if (t.val == 9) { // 三行三列：上蓝、中红、下绿
+        } else if (t.val == 9) {
             for (int col = 0; col < 3; ++col) {
                 int px = rect.x + rect.w * (col + 1) / 4;
                 drawPip(ren, px, yT, r - 1, cBlue);
@@ -451,19 +445,19 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
                 drawPip(ren, px, yB, r - 1, cGreen);
             }
         }
-    } else if (t.suit == 2) { // 条子：100% 传统真实排布
+    } else if (t.suit == 2) {
         int bw = std::max(4, rect.w / 9);
         int xL = rect.x + rect.w * 3 / 10 - bw / 2, xR = rect.x + rect.w * 7 / 10 - bw / 2, xM = cx - bw / 2;
         int bh2 = (rect.h - 24) / 2, bh3 = (rect.h - 28) / 3;
 
-        if (t.val == 1) { // 幺鸡小鸟
+        if (t.val == 1) {
             drawCircle(ren, cx, cy + 4, rect.w / 4, cGreen);
             drawCircle(ren, cx - 3, cy - 8, rect.w / 6, cRed);
             drawBamboo(ren, cx - 2, cy + 8, 5, rect.h / 4, cGreen);
         } else if (t.val == 2) {
             drawBamboo(ren, xM, rect.y + 10, bw + 1, bh2, cBlue);
             drawBamboo(ren, xM, rect.y + 14 + bh2, bw + 1, bh2, cGreen);
-        } else if (t.val == 3) { // 上一下二三角形
+        } else if (t.val == 3) {
             drawBamboo(ren, xM, rect.y + 10, bw + 1, bh2, cBlue);
             drawBamboo(ren, xL, rect.y + 14 + bh2, bw + 1, bh2, cGreen);
             drawBamboo(ren, xR, rect.y + 14 + bh2, bw + 1, bh2, cGreen);
@@ -472,26 +466,26 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
             drawBamboo(ren, xR, rect.y + 10, bw + 1, bh2, cGreen);
             drawBamboo(ren, xL, rect.y + 14 + bh2, bw + 1, bh2, cGreen);
             drawBamboo(ren, xR, rect.y + 14 + bh2, bw + 1, bh2, cBlue);
-        } else if (t.val == 5) { // 四角绿 + 中心红
+        } else if (t.val == 5) {
             drawBamboo(ren, xL, rect.y + 10, bw, bh2, cGreen);
             drawBamboo(ren, xR, rect.y + 10, bw, bh2, cBlue);
             drawBamboo(ren, xM, cy - bh2 / 2, bw, bh2, cRed);
             drawBamboo(ren, xL, rect.y + 14 + bh2, bw, bh2, cBlue);
             drawBamboo(ren, xR, rect.y + 14 + bh2, bw, bh2, cGreen);
-        } else if (t.val == 6) { // 两行三列全绿
+        } else if (t.val == 6) {
             for (int col = 0; col < 3; ++col) {
                 int bx = rect.x + rect.w * (col + 1) / 4 - bw / 2;
                 drawBamboo(ren, bx, rect.y + 10, bw, bh2, cGreen);
                 drawBamboo(ren, bx, rect.y + 14 + bh2, bw, bh2, cGreen);
             }
-        } else if (t.val == 7) { // 顶1红 + 中3绿 + 底3绿
+        } else if (t.val == 7) {
             drawBamboo(ren, xM, rect.y + 8, bw, bh3, cRed);
             for (int col = 0; col < 3; ++col) {
                 int bx = rect.x + rect.w * (col + 1) / 4 - bw / 2;
                 drawBamboo(ren, bx, rect.y + 12 + bh3, bw, bh3, cGreen);
                 drawBamboo(ren, bx, rect.y + 16 + bh3 * 2, bw, bh3, cGreen);
             }
-        } else if (t.val == 8) { // 对称 3-2-3 结构
+        } else if (t.val == 8) {
             for (int col = 0; col < 3; ++col) {
                 int bx = rect.x + rect.w * (col + 1) / 4 - bw / 2;
                 drawBamboo(ren, bx, rect.y + 8, bw, bh3, col == 1 ? cRed : cGreen);
@@ -499,7 +493,7 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
             }
             drawBamboo(ren, xL, rect.y + 12 + bh3, bw, bh3, cGreen);
             drawBamboo(ren, xR, rect.y + 12 + bh3, bw, bh3, cGreen);
-        } else if (t.val == 9) { // 三行三列：左蓝、中红、右绿
+        } else if (t.val == 9) {
             for (int row = 0; row < 3; ++row) {
                 int by = rect.y + 8 + row * (bh3 + 4);
                 drawBamboo(ren, rect.x + rect.w / 4 - bw / 2, by, bw, bh3, cBlue);
@@ -507,7 +501,7 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
                 drawBamboo(ren, rect.x + rect.w * 3 / 4 - bw / 2, by, bw, bh3, cGreen);
             }
         }
-    } else { // 字牌：东南西北中发白
+    } else {
         if (t.val == 7) {
             SDL_Rect wb = {rect.x + 10, rect.y + 12, rect.w - 20, rect.h - 24};
             SDL_SetRenderDrawColor(ren, cBlue.r, cBlue.g, cBlue.b, 255);
@@ -521,10 +515,9 @@ void drawMahjongTile(SDL_Renderer* ren, TTF_Font* fontBig, TTF_Font* fontSmall, 
         }
     }
 }
+
 void drawTileBack3D(SDL_Renderer* ren, SDL_Rect r, int side) {
-    // side: 0=上方对家(横向立牌), 1=左侧上家(纵向立牌), 2=右侧下家(纵向立牌)
     if (side == 0) {
-        // 顶部白色骨牌厚度 + 翡翠绿牌背
         SDL_Rect whiteRim = {r.x, r.y, r.w, 6};
         SDL_SetRenderDrawColor(ren, 245, 245, 235, 255);
         SDL_RenderFillRect(ren, &whiteRim);
@@ -536,7 +529,6 @@ void drawTileBack3D(SDL_Renderer* ren, SDL_Rect r, int side) {
         SDL_SetRenderDrawColor(ren, 12, 85, 45, 255);
         SDL_RenderDrawRect(ren, &r);
     } else {
-        // 侧边立牌：朝向桌面内侧露出白色骨牌层，外侧为翡翠绿背壳
         int rimW = 6;
         SDL_Rect whiteRim = (side == 1) ? SDL_Rect{r.x + r.w - rimW, r.y, rimW, r.h} : SDL_Rect{r.x, r.y, rimW, r.h};
         SDL_Rect greenBack = (side == 1) ? SDL_Rect{r.x, r.y, r.w - rimW + 1, r.h} : SDL_Rect{r.x + rimW - 1, r.y, r.w - rimW + 1, r.h};
@@ -597,7 +589,7 @@ int main(int argc, char* argv[]) {
     gSfxGang = Mix_LoadWAV("romfs:/voices/gang.wav");
     gSfxHu = Mix_LoadWAV("romfs:/voices/hu.wav");
     gSfxTaunt = Mix_LoadWAV("romfs:/voices/taunt.wav");
-    logStep("7: audio ok");
+    logStep("7: base audio ok");
 
     std::vector<SDL_Texture*> aiNormal = {
         IMG_LoadTexture(ren, "romfs:/ai0.png"),
@@ -632,10 +624,37 @@ int main(int argc, char* argv[]) {
     int streakCount = 0;
 
     std::vector<AIPlayer> ais = {
-        {"下家・甜美辣妹", "人家今天手气超好的啦", 10000, {}, {}, {"哎呀，手滑打错了", "这张人家不要哦", "听牌啦听牌啦！"}},
-        {"对家・淡定军师", "不急，慢慢算牌。", 10000, {}, {}, {"嗯，稳扎稳打。", "让我想想...", "这把牌面不错。"}},
-        {"上家・暴躁大哥", "准备好被我横扫了吗？", 10000, {}, {}, {"这你都不信！", "快点啦，磨磨蹭蹭的！", "乱打小心点炮哦！"}}
+        {
+            "下家・甜美辣妹", "人家今天手气超好的啦", 10000, {}, {},
+            {"哎呀，手滑打错了", "这张人家不要哦", "听牌啦听牌啦！"},
+            "哈哈！我胡牌啦，给钱给钱！",
+            "呜呜，人家点炮输惨了..."
+        },
+        {
+            "对家・淡定军师", "不急，慢慢算牌。", 10000, {}, {},
+            {"嗯，稳扎稳打。", "让我想想...", "这把牌面不错。"},
+            "承让了，这局我胡牌。",
+            "失算了，竟然被你胡了..."
+        },
+        {
+            "上家・暴躁大哥", "准备好被我横扫了吗？", 10000, {}, {},
+            {"这你都不信！", "快点啦，磨磨蹭蹭的！", "乱打小心点炮哦！"},
+            "哈哈哈！老子胡牌了，拿钱来！",
+            "可恶！这把居然输给你了！"
+        }
     };
+
+    for (int i = 0; i < 3; ++i) {
+        std::string prefix = "romfs:/voices/ai" + std::to_string(i) + "_";
+        ais[i].lineVoices = {
+            Mix_LoadWAV((prefix + "1.wav").c_str()),
+            Mix_LoadWAV((prefix + "2.wav").c_str()),
+            Mix_LoadWAV((prefix + "3.wav").c_str())
+        };
+        ais[i].huVoice = Mix_LoadWAV((prefix + "hu.wav").c_str());
+        ais[i].loseVoice = Mix_LoadWAV((prefix + "lose.wav").c_str());
+    }
+    logStep("8.5: character voices ok");
     int cursor = 0, turn = 3, phase = 0;
     Tile lastDiscard{0, 1, ""};
     int lastDiscardFrom = -1;
@@ -814,6 +833,7 @@ int main(int argc, char* argv[]) {
 
         if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
         if (kDown & HidNpadButton_R) startNewGame((kHeld & HidNpadButton_L) != 0);
+
         if (phase == 0 && !playerHand.empty()) {
             if (!playerRiichiDeclared) {
                 if (kDown & HidNpadButton_Left) cursor = (cursor - 1 + (int)playerHand.size()) % (int)playerHand.size();
@@ -842,7 +862,10 @@ int main(int argc, char* argv[]) {
                     statusMsg = "无法立直(需门前清、点数>=1000且打出当前牌后听牌)";
                 }
             } else if ((kDown & HidNpadButton_Y) && canWinShape(playerHand, isRiichiMode, true)) {
-                playSfx(gSfxHu);
+                int loserIdx = std::rand() % 3;
+                ais.at(loserIdx).bubble = ais.at(loserIdx).loseLine;
+                playSfx(ais.at(loserIdx).loseVoice, gSfxHu);
+
                 applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, true, justDidGang,
                                                playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount));
             } else if (!playerRiichiDeclared && (kDown & HidNpadButton_L)) {
@@ -884,8 +907,9 @@ int main(int argc, char* argv[]) {
                     auto aiTest = ais.at(i).hand;
                     aiTest.push_back(out);
                     if (canWinShape(aiTest, isRiichiMode, true)) {
-                        playSfx(gSfxHu);
-                        ais.at(i).bubble = "哈哈！点炮啦，这张我胡了！";
+                        ais.at(i).bubble = ais.at(i).huLine;
+                        playSfx(ais.at(i).huVoice, gSfxHu);
+
                         applyWinResult(evaluateWinFull(i, ais.at(i).name, aiTest, ais.at(i).melds, isRiichiMode, false, false,
                                                        false, false, actualDora, 3, 0));
                         aiStoleWin = true; break;
@@ -906,8 +930,9 @@ int main(int argc, char* argv[]) {
                     AIPlayer& ai = ais.at(turn);
                     ai.hand.push_back(wall.back()); wall.pop_back();
                     if (canWinShape(ai.hand, isRiichiMode, true)) {
-                        playSfx(gSfxHu);
-                        ai.bubble = "不好意思，我自摸胡牌啦！";
+                        ai.bubble = ai.huLine;
+                        playSfx(ai.huVoice, gSfxHu);
+
                         applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, isRiichiMode, true, false,
                                                        false, false, actualDora, -1, 0));
                     } else {
@@ -915,8 +940,10 @@ int main(int argc, char* argv[]) {
                         Tile out = ai.hand.at(dropIdx);
                         ai.hand.erase(ai.hand.begin() + dropIdx);
                         discards.push_back(out);
-                        ai.bubble = ai.lines.at(std::rand() % ai.lines.size());
-                        playSfx(gSfxTaunt, gSfxPlay);
+
+                        int lineIdx = std::rand() % (int)ai.lines.size();
+                        ai.bubble = ai.lines.at(lineIdx);
+                        playSfx(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay);
 
                         int whoDiscarded = turn;
                         turn = (turn + 1) % 4;
@@ -931,7 +958,14 @@ int main(int argc, char* argv[]) {
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
                 std::sort(playerHand.begin(), playerHand.end());
-                playSfx(gSfxHu);
+
+                if (lastDiscardFrom >= 0 && lastDiscardFrom < 3) {
+                    ais.at(lastDiscardFrom).bubble = ais.at(lastDiscardFrom).loseLine;
+                    playSfx(ais.at(lastDiscardFrom).loseVoice, gSfxHu);
+                } else {
+                    playSfx(gSfxHu);
+                }
+
                 applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, false, false,
                                                playerRiichiDeclared, playerIppatsu, actualDora, lastDiscardFrom, streakCount));
             } else if ((kDown & HidNpadButton_L) && optGang) {
@@ -971,13 +1005,13 @@ int main(int argc, char* argv[]) {
                 else { phase = 1; aiTimer = SDL_GetTicks(); statusMsg = "等待牌友出牌..."; }
             }
         }
+
         SDL_SetRenderDrawColor(ren, isRiichiMode ? 18 : 20, isRiichiMode ? 65 : 83, isRiichiMode ? 75 : 45, 255);
         SDL_RenderClear(ren);
 
         SDL_Color cWhite = {255, 255, 255, 255}, cYellow = {253, 224, 71, 255};
         SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255}, cGold = {251, 191, 36, 255};
 
-        // 1. 顶部状态栏
         drawText(ren, fontSmall, statusMsg, 25, 8, cYellow);
         std::string topRight = "第" + std::to_string(roundNum) + "局 | 点数:" + std::to_string(playerScore) + " | 余牌:" + std::to_string(wall.size()) + " | (-)换模式";
         drawText(ren, fontSmall, topRight, 720, 8, cGold);
@@ -991,7 +1025,6 @@ int main(int argc, char* argv[]) {
             return cur;
         };
 
-        // 2. 正上方：对家・淡定军师 + 面前一排立体绿色暗牌墙
         {
             SDL_Rect topBox = {435, 36, 410, 84};
             SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
@@ -1006,7 +1039,6 @@ int main(int argc, char* argv[]) {
             SDL_RenderFillRect(ren, &bub);
             drawText(ren, fontSmall, ais.at(1).bubble, bub.x + 10, bub.y + 8, cDark);
 
-            // 绘制对家立体绿色牌墙
             int cnt = (int)ais.at(1).hand.size();
             int tw = 22, th = 34;
             int startX = 640 - (cnt * (tw + 2)) / 2;
@@ -1014,8 +1046,6 @@ int main(int argc, char* argv[]) {
                 drawTileBack3D(ren, {startX + k * (tw + 2), 126, tw, th}, 0);
             }
         }
-
-        // 3. 左侧：上家・暴躁大哥 + 右侧竖排立体绿色暗牌墙
         {
             SDL_Rect leftBox = {14, 150, 198, 315};
             SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
@@ -1033,7 +1063,6 @@ int main(int argc, char* argv[]) {
             SDL_RenderFillRect(ren, &bub);
             drawText(ren, fontSmall, ais.at(2).bubble, bub.x + 6, bub.y + 32, cDark);
 
-            // 绘制上家立体绿色牌墙
             int cnt = (int)ais.at(2).hand.size();
             int tw = 34, th = 16;
             int startY = 315 - (cnt * (th + 2)) / 2;
@@ -1042,7 +1071,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // 4. 右侧：下家・甜美辣妹 + 左侧竖排立体绿色暗牌墙
         {
             SDL_Rect rightBox = {1068, 150, 198, 315};
             SDL_SetRenderDrawColor(ren, 12, 48, 30, 255);
@@ -1060,7 +1088,6 @@ int main(int argc, char* argv[]) {
             SDL_RenderFillRect(ren, &bub);
             drawText(ren, fontSmall, ais.at(0).bubble, bub.x + 6, bub.y + 32, cDark);
 
-            // 绘制下家立体绿色牌墙
             int cnt = (int)ais.at(0).hand.size();
             int tw = 34, th = 16;
             int startY = 315 - (cnt * (th + 2)) / 2;
@@ -1069,7 +1096,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // 5. 牌桌正中央：牌河区
         SDL_Rect river = {268, 168, 744, 298};
         SDL_SetRenderDrawColor(ren, 14, 58, 36, 255);
         SDL_RenderFillRect(ren, &river);
@@ -1089,7 +1115,6 @@ int main(int argc, char* argv[]) {
             drawMahjongTile(ren, fontSmall, fontSmall, discards.at(i), tRect, false);
         }
 
-        // 抢牌提示横幅
         if (phase == 2) {
             SDL_Rect banner = {260, 260, 760, 88};
             SDL_SetRenderDrawColor(ren, 127, 29, 29, 240);
@@ -1097,7 +1122,6 @@ int main(int argc, char* argv[]) {
             drawText(ren, fontBig, "打出(" + lastDiscard.label + ")！ " + statusMsg, banner.x + 25, banner.y + 28, cYellow);
         }
 
-        // 胡牌结算弹窗
         if (phase == 3 && hasWinPanel) {
             SDL_Rect panel = {210, 185, 860, 240};
             SDL_SetRenderDrawColor(ren, lastWinResult.winnerSeat == 3 ? 120 : 40, 20, 20, 245);
@@ -1116,7 +1140,6 @@ int main(int argc, char* argv[]) {
             drawText(ren, fontSmall, "按(R)继续下一局 | 按住(L+R)重置筹码 | 按(-)切换台麻/日麻", panel.x + 30, panel.y + 180, cYellow);
         }
 
-        // 6. 下方提示栏 & 玩家手牌/副露区
         std::string infoLine = "";
         if (playerRiichiDeclared) infoLine += "(已立直) ";
         if (phase == 0 && !playerRiichiDeclared) {
@@ -1174,8 +1197,17 @@ int main(int argc, char* argv[]) {
     for (auto* t : aiNormal) if (t) SDL_DestroyTexture(t);
     for (auto* t : aiWin) if (t) SDL_DestroyTexture(t);
     for (auto* t : aiLose) if (t) SDL_DestroyTexture(t);
-    Mix_FreeChunk(gSfxPlay); Mix_FreeChunk(gSfxChi); Mix_FreeChunk(gSfxPeng);
-    Mix_FreeChunk(gSfxGang); Mix_FreeChunk(gSfxHu); Mix_FreeChunk(gSfxTaunt);
+    for (auto& ai : ais) {
+        for (auto* v : ai.lineVoices) if (v) Mix_FreeChunk(v);
+        if (ai.huVoice) Mix_FreeChunk(ai.huVoice);
+        if (ai.loseVoice) Mix_FreeChunk(ai.loseVoice);
+    }
+    if (gSfxPlay) Mix_FreeChunk(gSfxPlay);
+    if (gSfxChi) Mix_FreeChunk(gSfxChi);
+    if (gSfxPeng) Mix_FreeChunk(gSfxPeng);
+    if (gSfxGang) Mix_FreeChunk(gSfxGang);
+    if (gSfxHu) Mix_FreeChunk(gSfxHu);
+    if (gSfxTaunt) Mix_FreeChunk(gSfxTaunt);
     for (auto* m : gBgmList) Mix_FreeMusic(m);
     if (fontTitle) TTF_CloseFont(fontTitle);
     if (fontBig) TTF_CloseFont(fontBig);
