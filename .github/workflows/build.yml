@@ -16,10 +16,10 @@ jobs:
           if [ -f icon.jpg ]; then convert icon.jpg -resize 256x256! -strip -interlace none JPEG:icon.jpg; fi
       - name: Make NRO
         run: make
-   - name: Upload NRO
-     uses: actions/upload-artifact@v4
-     with:
-       name: switch-mahjong-nro
-       path: |
-         switch-mahjong.nro
-         icon.jpg
+      - name: Upload NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch-mahjong-nro
+          path: |
+            switch-mahjong.nro
+            icon.jpg
