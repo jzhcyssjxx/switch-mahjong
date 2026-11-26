@@ -51,6 +51,8 @@ struct WinResult {
     std::string title;
     std::string details;
     std::vector<int> scoreDeltas;
+    std::vector<Tile> horseTiles; // 广东麻将买马牌
+    int hitHorseCount = 0;        // 中马数量
 };
 
 std::vector<Mix_Music*> gBgmList;
@@ -232,8 +234,9 @@ void analyzeTraits(const std::vector<Tile>& hand, const std::vector<Meld>& melds
 }
 
 WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const std::vector<Tile>& hand, const std::vector<Meld>& melds,
-                          bool isRiichiMode, bool isSelfDraw, bool isGangBloom, bool declaredRiichi, bool isIppatsu,
-                          const Tile& doraTile, int loserSeat, int streakCount) {
+                          int gameMode, bool isSelfDraw, bool isGangBloom, bool declaredRiichi, bool isIppatsu,
+                          const Tile& doraTile, int loserSeat, int streakCount, std::vector<Tile>& wall) {
+    // gameMode: 0=台湾16张, 1=日本立直, 2=四川血战(第二步完善), 3=广东推倒胡
     WinResult res;
     res.winnerSeat = winnerSeat;
     res.scoreDeltas = {0, 0, 0, 0};
@@ -246,9 +249,9 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
     bool hasDragon = false, isTanyao = false, isFlush = false, isHalfFlush = false;
     analyzeTraits(hand, melds, hasDragon, isTanyao, isFlush, isHalfFlush);
     bool isToitoi = (!hasChowMeld && canWinShape(hand, false, false));
-    bool isChiitoi = (isRiichiMode && melds.empty() && isSevenPairs(hand));
+    bool isChiitoi = ((gameMode == 1 || gameMode == 3) && melds.empty() && isSevenPairs(hand));
 
-    if (!isRiichiMode) {
+    if (gameMode == 0) {
         int tai = 1;
         std::string desc = "底台(1台)";
         if (streakCount > 0 && winnerSeat == 3) {
@@ -278,7 +281,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
             res.scoreDeltas.at(winnerSeat) = pay;
         }
         res.details = desc;
-    } else {
+    } else if (gameMode == 1) {
         int han = 0;
         std::string desc = "";
         auto addYaku = [&](const std::string& yName, int h) {
@@ -324,9 +327,50 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
             res.scoreDeltas.at(winnerSeat) = totalPay;
         }
         res.details = desc;
+    } else {
+        // 模式三(四川占位) & 模式四(广东推倒胡 + 4张买马开奖)
+        int mult = 1;
+        std::string desc = "推倒平胡(1倍)";
+        if (isSelfDraw) { mult += 1; desc += " + 自摸(+1倍)"; }
+        if (isGangBloom) { mult += 2; desc += " + 杠上开花(+2倍)"; }
+        if (isChiitoi) { mult += 2; desc += " + 七对子(+2倍)"; }
+        else if (isToitoi) { mult += 1; desc += " + 碰碰胡(+1倍)"; }
+        if (isFlush) { mult += 3; desc += " + 清一色(+3倍)"; }
+        else if (isHalfFlush) { mult += 1; desc += " + 混一色(+1倍)"; }
+
+        // 广东模式自动翻 4 张买马牌（1/5/9 或 东风 中马，每中1马额外+1倍）
+        if (gameMode == 3) {
+            for (int k = 0; k < 4 && !wall.empty(); ++k) {
+                Tile ht = wall.back();
+                wall.pop_back();
+                res.horseTiles.push_back(ht);
+                bool isHit = (ht.suit < 3 && (ht.val == 1 || ht.val == 5 || ht.val == 9)) || (ht.suit == 3 && ht.val == 1);
+                if (isHit) res.hitHorseCount++;
+            }
+            if (res.hitHorseCount > 0) {
+                mult += res.hitHorseCount;
+                desc += " + 中" + std::to_string(res.hitHorseCount) + "马(+" + std::to_string(res.hitHorseCount) + "倍)";
+            } else {
+                desc += " + 买马未中";
+            }
+        }
+
+        int baseScore = 600 * mult;
+        if (isSelfDraw) {
+            res.title = "(广东推倒胡) " + winnerName + " 自摸！总计 " + std::to_string(mult) + " 倍";
+            for (int i = 0; i < 4; ++i) if (i != winnerSeat) res.scoreDeltas.at(i) = -baseScore;
+            res.scoreDeltas.at(winnerSeat) = baseScore * 3;
+        } else {
+            int pay = baseScore * 2;
+            res.title = "(广东推倒胡) " + winnerName + " 抢胡(点炮)！总计 " + std::to_string(mult) + " 倍";
+            res.scoreDeltas.at(loserSeat) = -pay;
+            res.scoreDeltas.at(winnerSeat) = pay;
+        }
+        res.details = desc;
     }
     return res;
 }
+
 bool checkHasValidRiichiYaku(const std::vector<Tile>& hand, const std::vector<Meld>& melds, bool isSelfDraw, bool declaredRiichi) {
     if (declaredRiichi || isSelfDraw) return true;
     bool menQing = true, hasChow = false;
@@ -671,7 +715,7 @@ int main(int argc, char* argv[]) {
 
     bool inMenu = true;
     int menuCursor = 0;
-    bool isRiichiMode = false;
+    int gameMode = 0; // 0:台湾16张 1:日本立直 2:四川血战(第二步) 3:广东推倒胡
     bool showSettings = false;
     int settingsCursor = 0;
 
@@ -730,6 +774,7 @@ int main(int argc, char* argv[]) {
         ais[i].gangVoice = Mix_LoadWAV((prefix + "gang.wav").c_str());
     }
     logStep("8.5: character voices ok");
+
     auto drawSettingsOverlay = [&]() {
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 185);
@@ -811,18 +856,19 @@ int main(int argc, char* argv[]) {
         if (!playerRiichiDeclared) std::sort(playerHand.begin(), playerHand.end());
         cursor = std::max(0, (int)playerHand.size() - 1);
         turn = 3; phase = 0; justDidGang = fromGang;
+        bool allow7 = (gameMode == 1 || gameMode == 3);
         if (playerRiichiDeclared) {
             statusMsg = "(立直中) 自动摸牌：按(A)摸切打出";
             if (canWinShape(playerHand, true, true)) statusMsg += " | 按(Y)立直自摸！";
         } else {
             statusMsg = "你的回合：左右选牌，(A)出牌";
-            if (canWinShape(playerHand, isRiichiMode, true)) statusMsg += " | 按(Y)自摸胡牌！";
+            if (canWinShape(playerHand, allow7, true)) statusMsg += " | 按(Y)自摸胡牌！";
         }
     };
 
     auto startNewGame = [&](bool resetAll) {
-        int startChips = isRiichiMode ? 25000 : 10000;
-        int initTiles = isRiichiMode ? 13 : 16;
+        int startChips = (gameMode == 1) ? 25000 : 10000;
+        int initTiles = (gameMode == 0) ? 16 : 13;
         if (resetAll) {
             playerScore = startChips; roundNum = 1; streakCount = 0;
             for (int i = 0; i < 3; ++i) ais.at(i).score = startChips;
@@ -830,7 +876,7 @@ int main(int argc, char* argv[]) {
             roundNum++;
         }
         wall = buildWall();
-        if (isRiichiMode) {
+        if (gameMode == 1) {
             doraIndicator = wall.back(); wall.pop_back();
             actualDora = getNextDoraTile(doraIndicator);
         }
@@ -849,21 +895,29 @@ int main(int argc, char* argv[]) {
         playerHand.push_back(wall.back()); wall.pop_back();
         std::sort(playerHand.begin(), playerHand.end());
         cursor = 0; turn = 3; phase = 0;
-        statusMsg = isRiichiMode ? "(日本立直麻将) 选牌按(A)出牌" : "(台湾16张麻将) 选牌按(A)出牌";
-        if (canWinShape(playerHand, isRiichiMode, true)) statusMsg += " | 天胡！按(Y)胡牌！";
+
+        if (gameMode == 0) statusMsg = "(台湾16张麻将) 选牌按(A)出牌";
+        else if (gameMode == 1) statusMsg = "(日本立直麻将) 选牌按(A)出牌";
+        else if (gameMode == 2) statusMsg = "(四川血战到底・预览版) 选牌按(A)出牌";
+        else statusMsg = "(广东推倒胡・带买马) 选牌按(A)出牌";
+
+        bool allow7 = (gameMode == 1 || gameMode == 3);
+        if (canWinShape(playerHand, allow7, true)) statusMsg += " | 天胡！按(Y)胡牌！";
     };
+
     auto tryAIReactions = [&](const Tile& t, int fromSeat) -> bool {
+        bool allow7 = (gameMode == 1 || gameMode == 3);
         for (int step = 1; step <= 3; ++step) {
             int seat = (fromSeat + step) % 4;
             if (seat == 3 || seat == fromSeat) continue;
             auto aiTest = ais.at(seat).hand;
             aiTest.push_back(t);
-            if (canWinShape(aiTest, isRiichiMode, true)) {
-                if (!isRiichiMode || checkHasValidRiichiYaku(aiTest, ais.at(seat).melds, false, false)) {
+            if (canWinShape(aiTest, allow7, true)) {
+                if (gameMode != 1 || checkHasValidRiichiYaku(aiTest, ais.at(seat).melds, false, false)) {
                     ais.at(seat).bubble = ais.at(seat).huLine;
                     playVoice(ais.at(seat).huVoice, gSfxHu);
-                    applyWinResult(evaluateWinFull(seat, ais.at(seat).name, aiTest, ais.at(seat).melds, isRiichiMode, false, false,
-                                                   false, false, actualDora, fromSeat, 0));
+                    applyWinResult(evaluateWinFull(seat, ais.at(seat).name, aiTest, ais.at(seat).melds, gameMode, false, false,
+                                                   false, false, actualDora, fromSeat, 0, wall));
                     return true;
                 }
             }
@@ -880,11 +934,11 @@ int main(int argc, char* argv[]) {
                 ai.bubble = ai.gangLine;
                 playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay);
                 ai.hand.push_back(wall.back()); wall.pop_back();
-                if (canWinShape(ai.hand, isRiichiMode, true)) {
+                if (canWinShape(ai.hand, allow7, true)) {
                     ai.bubble = ai.huLine;
                     playVoice(ai.huVoice, gSfxHu);
-                    applyWinResult(evaluateWinFull(seat, ai.name, ai.hand, ai.melds, isRiichiMode, true, true,
-                                                   false, false, actualDora, -1, 0));
+                    applyWinResult(evaluateWinFull(seat, ai.name, ai.hand, ai.melds, gameMode, true, true,
+                                                   false, false, actualDora, -1, 0, wall));
                     return true;
                 }
                 int dropIdx = pickAIDiscard(ai.hand);
@@ -950,10 +1004,11 @@ int main(int argc, char* argv[]) {
 
     auto checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
         optHu = false; optGang = false; optPeng = false; optChis.clear();
+        bool allow7 = (gameMode == 1 || gameMode == 3);
         auto testWin = playerHand;
         testWin.push_back(t);
-        if (canWinShape(testWin, isRiichiMode, true)) {
-            if (!isRiichiMode || checkHasValidRiichiYaku(testWin, playerMelds, false, playerRiichiDeclared)) optHu = true;
+        if (canWinShape(testWin, allow7, true)) {
+            if (gameMode != 1 || checkHasValidRiichiYaku(testWin, playerMelds, false, playerRiichiDeclared)) optHu = true;
         }
         if (!playerRiichiDeclared) {
             int same = countTile(playerHand, t);
@@ -1027,39 +1082,51 @@ int main(int argc, char* argv[]) {
         }
 
         if (inMenu) {
-            if (kDown & (HidNpadButton_Up | HidNpadButton_Down | HidNpadButton_Left | HidNpadButton_Right)) {
-                menuCursor = 1 - menuCursor;
+            if (kDown & (HidNpadButton_Left | HidNpadButton_Right)) {
+                menuCursor ^= 1;
+                playSfx(gSfxPlay);
+            }
+            if (kDown & (HidNpadButton_Up | HidNpadButton_Down)) {
+                menuCursor ^= 2;
                 playSfx(gSfxPlay);
             }
             if (kDown & HidNpadButton_A) {
-                isRiichiMode = (menuCursor == 1);
+                gameMode = menuCursor;
                 inMenu = false;
                 playSfx(gSfxPeng, gSfxPlay);
                 startNewGame(true);
             }
+
             SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
             SDL_RenderClear(ren);
-            SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255}, cDark = {20, 20, 20, 255};
-            drawText(ren, fontTitle, "明星三缺一风格・全能麻将", 410, 85, cGold);
-            drawText(ren, fontSmall, "方向键选玩法 | (A)开始 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 150, cWhite);
+            SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255};
+            SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255};
 
-            SDL_Rect card0 = {180, 225, 420, 320};
-            SDL_SetRenderDrawColor(ren, menuCursor == 0 ? 254 : 20, menuCursor == 0 ? 240 : 83, menuCursor == 0 ? 138 : 45, 255);
-            SDL_RenderFillRect(ren, &card0);
-            drawText(ren, fontBig, "模式一：台湾 16 张麻将", card0.x + 65, card0.y + 35, menuCursor == 0 ? cDark : cGold);
-            drawText(ren, fontSmall, "・起手 16 张牌，凑 5 组顺刻 + 1 对眼", card0.x + 30, card0.y + 100, menuCursor == 0 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・经典台数制：底台、门清、自摸、连庄", card0.x + 30, card0.y + 140, menuCursor == 0 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・支持碰碰胡(4台)、清一色(8台)、杠开花", card0.x + 30, card0.y + 180, menuCursor == 0 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・初始筹码：10,000 分", card0.x + 30, card0.y + 240, menuCursor == 0 ? cDark : cGold);
+            drawText(ren, fontTitle, "明星三缺一风格・全能麻将大厅", 390, 35, cGold);
+            drawText(ren, fontSmall, "方向键选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 88, cWhite);
 
-            SDL_Rect card1 = {680, 225, 420, 320};
-            SDL_SetRenderDrawColor(ren, menuCursor == 1 ? 254 : 20, menuCursor == 1 ? 240 : 83, menuCursor == 1 ? 138 : 45, 255);
-            SDL_RenderFillRect(ren, &card1);
-            drawText(ren, fontBig, "模式二：日本 13 张立直麻将", card1.x + 50, card1.y + 35, menuCursor == 1 ? cDark : cGold);
-            drawText(ren, fontSmall, "・起手 13 张牌，支持特殊牌型(七对子)", card1.x + 30, card1.y + 100, menuCursor == 1 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・门清听牌按(ZR)拍棒立直 + 一发奖励", card1.x + 30, card1.y + 140, menuCursor == 1 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・含宝牌翻倍、满贯/跳满/役满结算", card1.x + 30, card1.y + 180, menuCursor == 1 ? cDark : cWhite);
-            drawText(ren, fontSmall, "・初始点数：25,000 点", card1.x + 30, card1.y + 240, menuCursor == 1 ? cDark : cGold);
+            struct ModeCard { std::string title, l1, l2, l3; };
+            std::vector<ModeCard> cards = {
+                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄/清一色", "・初始筹码：10,000 分"},
+                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直 + 一发，满贯役满结算", "・初始点数：25,000 点"},
+                {"3. 四川血战到底 (第二步解锁)", "・108 张万筒条，起手定缺、刮风下雨", "・一家胡牌不结束，三家胡完才散场", "・初始筹码：10,000 分"},
+                {"4. 广东推倒胡 (买马版)", "・13 张快节奏平胡，支持七对/碰碰/清一色", "・胡牌自动翻 4 张买马牌，中马直接翻倍！", "・初始筹码：10,000 分"}
+            };
+
+            for (int i = 0; i < 4; ++i) {
+                int col = i % 2, row = i / 2;
+                SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
+                bool sel = (menuCursor == i);
+                SDL_SetRenderDrawColor(ren, sel ? 254 : 20, sel ? 240 : 83, sel ? 138 : 45, 255);
+                SDL_RenderFillRect(ren, &cRect);
+                SDL_SetRenderDrawColor(ren, sel ? 251 : 45, sel ? 191 : 130, sel ? 36 : 80, 255);
+                SDL_RenderDrawRect(ren, &cRect);
+
+                drawText(ren, fontBig, cards[i].title, cRect.x + 28, cRect.y + 22, sel ? cDark : cGold);
+                drawText(ren, fontSmall, cards[i].l1, cRect.x + 28, cRect.y + 78, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l2, cRect.x + 28, cRect.y + 118, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l3, cRect.x + 28, cRect.y + 178, sel ? cDark : cCyan);
+            }
 
             SDL_RenderPresent(ren);
             continue;
@@ -1068,6 +1135,7 @@ int main(int argc, char* argv[]) {
         if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
         if (kDown & HidNpadButton_R) startNewGame((kHeld & HidNpadButton_L) != 0);
 
+        bool allow7 = (gameMode == 1 || gameMode == 3);
         if (phase == 0 && !playerHand.empty()) {
             if (!playerRiichiDeclared) {
                 if (kDown & HidNpadButton_Left) cursor = (cursor - 1 + (int)playerHand.size()) % (int)playerHand.size();
@@ -1076,7 +1144,7 @@ int main(int argc, char* argv[]) {
                 cursor = (int)playerHand.size() - 1;
             }
 
-            if (isRiichiMode && !playerRiichiDeclared && (kDown & HidNpadButton_ZR)) {
+            if (gameMode == 1 && !playerRiichiDeclared && (kDown & HidNpadButton_ZR)) {
                 bool menQing = true;
                 for (const auto& m : playerMelds) if (m.type != 3) menQing = false;
                 auto tempHand = playerHand;
@@ -1095,12 +1163,12 @@ int main(int argc, char* argv[]) {
                 } else {
                     statusMsg = "无法立直(需门前清、点数>=1000且打出当前牌后听牌)";
                 }
-            } else if ((kDown & HidNpadButton_Y) && canWinShape(playerHand, isRiichiMode, true)) {
+            } else if ((kDown & HidNpadButton_Y) && canWinShape(playerHand, allow7, true)) {
                 int loserIdx = std::rand() % 3;
                 ais.at(loserIdx).bubble = ais.at(loserIdx).loseLine;
                 playVoice(ais.at(loserIdx).loseVoice, gSfxHu);
-                applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, true, justDidGang,
-                                               playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount));
+                applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, gameMode, true, justDidGang,
+                                               playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount, wall));
             } else if (!playerRiichiDeclared && (kDown & HidNpadButton_L)) {
                 bool didGang = false;
                 for (const auto& t : playerHand) {
@@ -1175,11 +1243,11 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                    if (canWinShape(ai.hand, isRiichiMode, true)) {
+                    if (canWinShape(ai.hand, allow7, true)) {
                         ai.bubble = ai.huLine;
                         playVoice(ai.huVoice, gSfxHu);
-                        applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, isRiichiMode, true, aiDidSelfGang,
-                                                       false, false, actualDora, -1, 0));
+                        applyWinResult(evaluateWinFull(turn, ai.name, ai.hand, ai.melds, gameMode, true, aiDidSelfGang,
+                                                       false, false, actualDora, -1, 0, wall));
                     } else {
                         int dropIdx = pickAIDiscard(ai.hand);
                         Tile out = ai.hand.at(dropIdx);
@@ -1214,8 +1282,8 @@ int main(int argc, char* argv[]) {
                 } else {
                     playSfx(gSfxHu);
                 }
-                applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, isRiichiMode, false, false,
-                                               playerRiichiDeclared, playerIppatsu, actualDora, lastDiscardFrom, streakCount));
+                applyWinResult(evaluateWinFull(3, "你", playerHand, playerMelds, gameMode, false, false,
+                                               playerRiichiDeclared, playerIppatsu, actualDora, lastDiscardFrom, streakCount, wall));
             } else if ((kDown & HidNpadButton_L) && optGang) {
                 discards.pop_back();
                 for (int k = 0; k < 3; ++k) removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
@@ -1255,7 +1323,11 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        SDL_SetRenderDrawColor(ren, isRiichiMode ? 18 : 20, isRiichiMode ? 65 : 83, isRiichiMode ? 75 : 45, 255);
+        SDL_Color bgCol = {20, 83, 45, 255};
+        if (gameMode == 1) bgCol = {18, 65, 75, 255};
+        else if (gameMode == 2) bgCol = {75, 28, 32, 255};
+        else if (gameMode == 3) bgCol = {28, 52, 88, 255};
+        SDL_SetRenderDrawColor(ren, bgCol.r, bgCol.g, bgCol.b, 255);
         SDL_RenderClear(ren);
 
         SDL_Color cWhite = {255, 255, 255, 255}, cYellow = {253, 224, 71, 255};
@@ -1376,9 +1448,11 @@ int main(int argc, char* argv[]) {
         SDL_SetRenderDrawColor(ren, 34, 120, 75, 255);
         SDL_RenderDrawRect(ren, &river);
 
-        std::string riverTitle = isRiichiMode
-            ? ("中央牌河 (宝牌指示: " + doraIndicator.label + " -> 宝牌: " + actualDora.label + ")")
-            : ("中央牌河 (台麻16张 | 当前连庄: " + std::to_string(streakCount) + ")");
+        std::string riverTitle = "";
+        if (gameMode == 0) riverTitle = "中央牌河 (台湾16张 | 当前连庄: " + std::to_string(streakCount) + ")";
+        else if (gameMode == 1) riverTitle = "中央牌河 (宝牌指示: " + doraIndicator.label + " -> 宝牌: " + actualDora.label + ")";
+        else if (gameMode == 2) riverTitle = "中央牌河 (四川血战到底)";
+        else riverTitle = "中央牌河 (广东推倒胡 | 1/5/9及东风中马翻倍)";
         drawText(ren, fontSmall, riverTitle, river.x + 16, river.y + 8, cWhite);
 
         int startIdx = std::max(0, (int)discards.size() - 52);
@@ -1397,11 +1471,15 @@ int main(int argc, char* argv[]) {
         }
 
         if (phase == 3 && hasWinPanel) {
-            SDL_Rect panel = {210, 185, 860, 240};
+            int panelH = lastWinResult.horseTiles.empty() ? 240 : 300;
+            SDL_Rect panel = {210, 165, 860, panelH};
             SDL_SetRenderDrawColor(ren, lastWinResult.winnerSeat == 3 ? 120 : 40, 20, 20, 245);
             SDL_RenderFillRect(ren, &panel);
-            drawText(ren, fontBig, lastWinResult.title, panel.x + 30, panel.y + 20, cGold);
-            drawText(ren, fontSmall, "番型明细：" + lastWinResult.details, panel.x + 30, panel.y + 70, cWhite);
+            SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+            SDL_RenderDrawRect(ren, &panel);
+
+            drawText(ren, fontBig, lastWinResult.title, panel.x + 30, panel.y + 18, cGold);
+            drawText(ren, fontSmall, "番型明细：" + lastWinResult.details, panel.x + 30, panel.y + 62, cWhite);
 
             std::string deltaLine = "本局变动：你 " + (lastWinResult.scoreDeltas.at(3) >= 0 ? std::string("+") : std::string("")) + std::to_string(lastWinResult.scoreDeltas.at(3));
             for (int i = 0; i < 3; ++i) {
@@ -1410,10 +1488,22 @@ int main(int argc, char* argv[]) {
                     deltaLine += " | " + ais.at(i).name + " " + sgn + std::to_string(lastWinResult.scoreDeltas.at(i));
                 }
             }
-            drawText(ren, fontSmall, deltaLine, panel.x + 30, panel.y + 120, cCyan);
-            drawText(ren, fontSmall, "按(R)继续下一局 | 按住(L+R)重置筹码 | 按(-)切换台麻/日麻", panel.x + 30, panel.y + 180, cYellow);
-        }
+            drawText(ren, fontSmall, deltaLine, panel.x + 30, panel.y + 104, cCyan);
 
+            // 若有买马牌（广东模式），直接在结算面板里画出 4 张马牌，中马自动高亮金框！
+            if (!lastWinResult.horseTiles.empty()) {
+                drawText(ren, fontSmall, "翻开买马牌：", panel.x + 30, panel.y + 162, cGold);
+                for (size_t h = 0; h < lastWinResult.horseTiles.size(); ++h) {
+                    const Tile& ht = lastWinResult.horseTiles.at(h);
+                    bool isHit = (ht.suit < 3 && (ht.val == 1 || ht.val == 5 || ht.val == 9)) || (ht.suit == 3 && ht.val == 1);
+                    SDL_Rect hRect = {panel.x + 165 + (int)h * 68, panel.y + 142, 46, 62};
+                    drawMahjongTile(ren, fontSmall, fontSmall, ht, hRect, isHit);
+                    if (isHit) drawText(ren, fontSmall, "中!", hRect.x + 12, hRect.y + 64, cYellow);
+                }
+            }
+
+            drawText(ren, fontSmall, "按(R)继续下一局 | 按住(L+R)重置筹码 | 按(-)返回四模式大厅", panel.x + 30, panel.y + panelH - 42, cYellow);
+        }
         std::string infoLine = "";
         if (playerRiichiDeclared) infoLine += "(已立直) ";
         if (phase == 0 && !playerRiichiDeclared) {
@@ -1424,7 +1514,7 @@ int main(int argc, char* argv[]) {
                 if (m.type == 1 && hasTileVal(playerHand, firstTile.suit, firstTile.val)) canSelfGang = true;
             }
             if (canSelfGang) infoLine += "(按L键开杠) ";
-            if (isRiichiMode) {
+            if (gameMode == 1) {
                 bool menQing = true;
                 for (const auto& m : playerMelds) if (m.type != 3) menQing = false;
                 auto tempHand = playerHand;
@@ -1434,7 +1524,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         } else if (phase == 1 || phase == 2) {
-            auto waits = getTenpaiTiles(playerHand, isRiichiMode);
+            auto waits = getTenpaiTiles(playerHand, allow7);
             if (!waits.empty()) {
                 infoLine += "已听牌！胡：";
                 for (size_t i = 0; i < waits.size(); ++i) infoLine += waits.at(i).label + (i + 1 < waits.size() ? "、" : "");
