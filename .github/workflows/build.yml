@@ -13,7 +13,7 @@ jobs:
           mkdir -p romfs
           cp /usr/share/fonts/truetype/wqy/wqy-microhei.ttc romfs/font.ttf
           mogrify -resize 160x160 romfs/*.png || true
-          if [ -f icon.jpg ]; then convert icon.jpg -resize 256x256! -strip -interlace none JPEG:icon.jpg; fi
+          if [ -f icon.jpg ]; then convert icon.jpg -resize 256x256! -background black -alpha remove -colorspace sRGB -type TrueColor -strip -interlace none -quality 90 JPEG:icon.jpg; fi
       - name: Make NRO
         run: make
       - name: Upload NRO
