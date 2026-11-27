@@ -1963,7 +1963,6 @@ if (touchTapped) {
             SDL_Rect card = {drawX + i * (cardW + 4) + extraGap, selected ? 515 : 545, cardW, 105};
             drawMahjongTile(ren, fontBig, fontSmall, playerHand.at(i), card, selected);
         }
-        }
 
         // 胡牌金色闪屏光效（前 350 毫秒）
         if (gWinFlashTimer > 0 && SDL_GetTicks() - gWinFlashTimer < 350) {
