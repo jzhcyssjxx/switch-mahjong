@@ -1374,6 +1374,7 @@ int main(int argc, char* argv[]) {
                     playSfx(gSfxPlay);
                 }
                 saveVolumeConfig();
+            }
             if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
                 saveVolumeConfig();
                 break;
