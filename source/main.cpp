@@ -1364,13 +1364,13 @@ int main(int argc, char* argv[]) {
                 menuCursor ^= 2;
                 playSfx(gSfxPlay);
             }
-if (touchTapped) {
-         for (int i = 0; i < 4; ++i) {
-        int col = i % 2, row = i / 2;
-        SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
-        if (touchX >= cRect.x && touchX <= cRect.x + cRect.w && touchY >= cRect.y && touchY <= cRect.y + cRect.h) {
-            menuCursor = i;
-            kDown |= HidNpadButton_A;
+            if (touchTapped) {
+                for (int i = 0; i < 4; ++i) {
+                    int col = i % 2, row = i / 2;
+                    SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
+                    if (touchX >= cRect.x && touchX <= cRect.x + cRect.w && touchY >= cRect.y && touchY <= cRect.y + cRect.h) {
+                        menuCursor = i;
+                        kDown |= HidNpadButton_A;
                     }
                 }
             }
