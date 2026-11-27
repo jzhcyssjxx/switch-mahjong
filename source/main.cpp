@@ -1313,8 +1313,8 @@ int main(int argc, char* argv[]) {
         hidGetTouchScreenStates(&touchState, 1);
         if (touchState.count > 0 && prevTouch.count == 0) {
             touchTapped = true;
-            touchX = (int)touchState.touches.x;
-            touchY = (int)touchState.touches.y;
+            touchX = (int)touchState.touches[0].x;
+            touchY = (int)touchState.touches[0].y;
         }
         prevTouch = touchState;
 
@@ -1338,7 +1338,7 @@ int main(int argc, char* argv[]) {
                     applyBgmVolume();
                 } else if (settingsCursor == 1) {
                     gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
-                    playVoice(ais.lineVoices, gSfxTaunt);
+                    playVoice(ais[0].lineVoices[0], gSfxTaunt);
                 }
                 } else if (settingsCursor == 2) {
                     gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
@@ -1355,7 +1355,6 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(ren);
             continue;
         }
-
             if (inMenu) {
             if (btnLeft || btnRight) {
                 menuCursor ^= 1;
