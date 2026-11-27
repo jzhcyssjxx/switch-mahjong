@@ -12,6 +12,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <cmath>
 #include <functional>
 
 struct Tile {
@@ -739,6 +740,38 @@ int main(int argc, char* argv[]) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
+    hidInitializeTouchScreen();
+    HidTouchScreenState prevTouch = {0};
+
+    struct Confetti {
+        float x, y, vx, vy;
+        int w, h;
+        SDL_Color col;
+    };
+    std::vector<Confetti> gParticles;
+    Uint32 gWinFlashTimer = 0;
+
+    auto spawnWinParticles = [&]() {
+        gParticles.clear();
+        gWinFlashTimer = SDL_GetTicks();
+        std::vector<SDL_Color> cols = {
+            {253, 224, 71, 255}, {248, 113, 113, 255}, {96, 165, 250, 255},
+            {74, 222, 128, 255}, {251, 146, 60, 255}, {244, 114, 182, 255}
+        };
+        for (int i = 0; i < 65; ++i) {
+            float angle = -3.14159f * (0.15f + 0.70f * (std::rand() % 100) / 100.0f);
+            float speed = 4.0f + (std::rand() % 90) / 10.0f;
+            gParticles.push_back({
+                640.0f + (std::rand() % 240 - 120),
+                320.0f + (std::rand() % 60 - 30),
+                std::cos(angle) * speed,
+                std::sin(angle) * speed - 3.0f,
+                8 + std::rand() % 8,
+                6 + std::rand() % 8,
+                cols.at(i % cols.size())
+            });
+        }
+    };
     logStep("3: pad ok");
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
@@ -974,6 +1007,7 @@ int main(int argc, char* argv[]) {
 
     // 统一胡牌处理：普通模式直接结束，四川血战模式允许多人连续胡牌直到剩下 1 家未胡！
     auto handleSeatWin = [&](WinResult res, bool isSelfDraw, int loserSeat) {
+        spawnWinParticles();
         if (gameMode != 2) {
             lastWinResult = res;
             for (int i = 0; i < 3; ++i) ais.at(i).score += res.scoreDeltas.at(i);
@@ -1268,6 +1302,21 @@ int main(int argc, char* argv[]) {
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
 
+        bool btnUp    = (kDown & (HidNpadButton_Up    | HidNpadButton_StickLUp)) != 0;
+        bool btnDown  = (kDown & (HidNpadButton_Down  | HidNpadButton_StickLDown)) != 0;
+        bool btnLeft  = (kDown & (HidNpadButton_Left  | HidNpadButton_StickLLeft)) != 0;
+        bool btnRight = (kDown & (HidNpadButton_Right | HidNpadButton_StickLRight)) != 0;
+        bool touchTapped = false;
+        int touchX = -1, touchY = -1;
+        HidTouchScreenState touchState = {0};
+        hidGetTouchScreenStates(&touchState, 1);
+        if (touchState.count > 0 && prevTouch.count == 0) {
+            touchTapped = true;
+            touchX = (int)touchState.touches[0].x;
+            touchY = (int)touchState.touches[0].y;
+        }
+        prevTouch = touchState;
+
         if (!gBgmList.empty() && (!Mix_PlayingMusic() || (kDown & HidNpadButton_ZL))) playRandomBgm();
 
         if (kDown & HidNpadButton_Plus) {
@@ -1275,12 +1324,11 @@ int main(int argc, char* argv[]) {
             showSettings = !showSettings;
         }
 
-        if (showSettings) {
-            if (kDown & HidNpadButton_Up) settingsCursor = (settingsCursor + 3) % 4;
-            if (kDown & HidNpadButton_Down) settingsCursor = (settingsCursor + 1) % 4;
+            if (btnUp) settingsCursor = (settingsCursor + 3) % 4;
+            if (btnDown) settingsCursor = (settingsCursor + 1) % 4;
             int delta = 0;
-            if (kDown & HidNpadButton_Left) delta = -10;
-            if (kDown & HidNpadButton_Right) delta = 10;
+            if (btnLeft) delta = -10;
+            if (btnRight) delta = 10;
 
             if (delta != 0) {
                 if (settingsCursor == 0) {
@@ -1306,13 +1354,23 @@ int main(int argc, char* argv[]) {
         }
 
         if (inMenu) {
-            if (kDown & (HidNpadButton_Left | HidNpadButton_Right)) {
+            if (btnLeft || btnRight) {
                 menuCursor ^= 1;
                 playSfx(gSfxPlay);
             }
-            if (kDown & (HidNpadButton_Up | HidNpadButton_Down)) {
+            if (btnUp || btnDown) {
                 menuCursor ^= 2;
                 playSfx(gSfxPlay);
+            }
+if (touchTapped) {
+         for (int i = 0; i < 4; ++i) {
+        int col = i % 2, row = i / 2;
+        SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
+        if (touchX >= cRect.x && touchX <= cRect.x + cRect.w && touchY >= cRect.y && touchY <= cRect.y + cRect.h) {
+            menuCursor = i;
+            kDown |= HidNpadButton_A;
+                    }
+                }
             }
             if (kDown & HidNpadButton_A) {
                 gameMode = menuCursor;
@@ -1357,12 +1415,21 @@ int main(int argc, char* argv[]) {
         }
 
         if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
-        if (kDown & HidNpadButton_R) startNewGame((kHeld & HidNpadButton_L) != 0);
+        if ((kDown & HidNpadButton_R) || (phase == 3 && touchTapped && touchY > 120)) startNewGame((kHeld & HidNpadButton_L) != 0);
 
         // phase == 4: 四川麻将开局定缺选择阶段
         if (phase == 4) {
-            if (kDown & HidNpadButton_Left) { dingQueCursor = (dingQueCursor + 2) % 3; playSfx(gSfxPlay); }
-            if (kDown & HidNpadButton_Right) { dingQueCursor = (dingQueCursor + 1) % 3; playSfx(gSfxPlay); }
+        if (touchTapped) {
+            for (int s = 0; s < 3; ++s) {
+            SDL_Rect btn = {290 + 45 + s * 210, 210 + 108, 190, 82};
+        if (touchX >= btn.x && touchX <= btn.x + btn.w && touchY >= btn.y && touchY <= btn.y + btn.h) {
+            dingQueCursor = s;
+            kDown |= HidNpadButton_A;
+                    }
+                }
+            }
+            if (btnLeft) { dingQueCursor = (dingQueCursor + 2) % 3; playSfx(gSfxPlay); }
+            if (btnRight) { dingQueCursor = (dingQueCursor + 1) % 3; playSfx(gSfxPlay); }
             if (kDown & HidNpadButton_A) {
                 voidSuit.at(3) = dingQueCursor;
                 playSfx(gSfxPeng, gSfxPlay);
@@ -1378,9 +1445,26 @@ int main(int argc, char* argv[]) {
         }
         bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
         if (phase == 0 && !playerHand.empty()) {
+            if (touchTapped && touchY >= 505 && touchY <= 665) {
+                int calcX = 30 + (int)playerMelds.size() * 170;
+                bool hasDrawn = (playerHand.size() % 3 == 2);
+                int avW = 1240 - calcX - (hasDrawn ? 18 : 0);
+                int cW = std::min(64, avW / std::max(1, (int)playerHand.size()) - 4);
+                for (int i = 0; i < (int)playerHand.size(); ++i) {
+                    int gap = (hasDrawn && i == (int)playerHand.size() - 1) ? 18 : 0;
+                    int tx1 = calcX + i * (cW + 4) + gap;
+                    int tx2 = tx1 + cW + 4;
+                    if (touchX >= tx1 && touchX <= tx2) {
+                        if (cursor == i || playerRiichiDeclared) kDown |= HidNpadButton_A;
+                        else { cursor = i; playSfx(gSfxPlay); }
+                        break;
+                    }
+                }
+            }
             if (!playerRiichiDeclared) {
-                if (kDown & HidNpadButton_Left) cursor = (cursor - 1 + (int)playerHand.size()) % (int)playerHand.size();
-                if (kDown & HidNpadButton_Right) cursor = (cursor + 1) % (int)playerHand.size();
+                if (btnLeft) cursor = (cursor - 1 + (int)playerHand.size()) % (int)playerHand.size();
+                if (btnRight) cursor = (cursor + 1) % (int)playerHand.size();
+            }
             } else {
                 cursor = (int)playerHand.size() - 1;
             }
@@ -1546,6 +1630,13 @@ int main(int argc, char* argv[]) {
                 }
             }
         } else if (phase == 2) {
+            if (touchTapped && touchY >= 240 && touchY <= 370) {
+                if (touchX >= 820) kDown |= HidNpadButton_B;
+                else if (optHu) kDown |= HidNpadButton_Y;
+                else if (optGang) kDown |= HidNpadButton_L;
+                else if (optPeng) kDown |= HidNpadButton_X;
+                else if (!optChis.empty()) kDown |= HidNpadButton_A;
+            }
             if ((kDown & HidNpadButton_Y) && optHu) {
                 playerHand.push_back(lastDiscard);
                 std::sort(playerHand.begin(), playerHand.end());
@@ -1872,6 +1963,33 @@ int main(int argc, char* argv[]) {
             SDL_Rect card = {drawX + i * (cardW + 4) + extraGap, selected ? 515 : 545, cardW, 105};
             drawMahjongTile(ren, fontBig, fontSmall, playerHand.at(i), card, selected);
         }
+        }
+
+        // 胡牌金色闪屏光效（前 350 毫秒）
+        if (gWinFlashTimer > 0 && SDL_GetTicks() - gWinFlashTimer < 350) {
+            Uint8 alpha = (Uint8)(140 * (350 - (SDL_GetTicks() - gWinFlashTimer)) / 350);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 253, 224, 71, alpha);
+            SDL_Rect flashRect = {0, 0, 1280, 720};
+            SDL_RenderFillRect(ren, &flashRect);
+        }
+
+        // 更新并绘制胡牌漫天彩带金币粒子
+        for (size_t i = 0; i < gParticles.size(); ) {
+            auto& p = gParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.25f;
+            if (p.y > 740.0f) {
+                gParticles.erase(gParticles.begin() + i);
+            } else {
+                SDL_SetRenderDrawColor(ren, p.col.r, p.col.g, p.col.b, 255);
+                SDL_Rect pr = {(int)p.x, (int)p.y, p.w, p.h};
+                SDL_RenderFillRect(ren, &pr);
+                ++i;
+            }
+        }
+
         SDL_RenderPresent(ren);
     }
 
