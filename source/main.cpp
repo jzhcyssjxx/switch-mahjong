@@ -1339,7 +1339,6 @@ int main(int argc, char* argv[]) {
                 } else if (settingsCursor == 1) {
                     gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
                     playVoice(ais[0].lineVoices[0], gSfxTaunt);
-                }
                 } else if (settingsCursor == 2) {
                     gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
                     playSfx(gSfxPlay);
@@ -1355,6 +1354,7 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(ren);
             continue;
         }
+
         if (inMenu) {
             if (btnLeft || btnRight) {
                 menuCursor ^= 1;
