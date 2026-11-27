@@ -66,6 +66,10 @@ Mix_Chunk* gSfxPeng = nullptr;
 Mix_Chunk* gSfxGang = nullptr;
 Mix_Chunk* gSfxHu = nullptr;
 Mix_Chunk* gSfxTaunt = nullptr;
+Mix_Chunk* gPlayerChi = nullptr;
+Mix_Chunk* gPlayerPeng = nullptr;
+Mix_Chunk* gPlayerGang = nullptr;
+Mix_Chunk* gPlayerHu = nullptr;
 
 int gVolBgm = 45;
 int gVolVoice = 100;
@@ -1374,8 +1378,7 @@ int main(int argc, char* argv[]) {
             }
             if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
                 saveVolumeConfig();
-                Mix_HaltChannel(-1);
-                Mix_HaltMusic();
+                appletRequestExit();
                 break;
             }
             if (kDown & HidNpadButton_B) { saveVolumeConfig(); showSettings = false; }
@@ -1527,9 +1530,7 @@ int main(int argc, char* argv[]) {
                     statusMsg = "无法立直(需门前清、点数>=1000且打出当前牌后听牌)";
                 }
             } else if ((kDown & HidNpadButton_Y) && noVoidLeft && canWinShape(playerHand, allow7, true)) {
-                int loserIdx = std::rand() % 3;
-                ais.at(loserIdx).bubble = ais.at(loserIdx).loseLine;
-                playVoice(ais.at(loserIdx).loseVoice, gSfxHu);
+                playVoice(gSfxHu, nullptr, true);
                 handleSeatWin(evaluateWinFull(3, "你", playerHand, playerMelds, gameMode, true, justDidGang,
                                               playerRiichiDeclared, playerIppatsu, actualDora, -1, streakCount, wall), true, -1);
             } else if (!playerRiichiDeclared && (kDown & HidNpadButton_L)) {
@@ -1561,7 +1562,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 if (didGang) {
-                    playSfx(gSfxGang, gSfxPlay);
+                    playVoice(gSfxGang, gSfxPlay, true);
                     applySichuanGangMoney(3, isAnGang);
                     playerDrawAndEnterTurn(true);
                     statusMsg = (gameMode == 2 ? "刮风下雨收税成功！" : "开杠补牌成功！") + std::string("请选择一张打出");
@@ -1648,21 +1649,26 @@ int main(int argc, char* argv[]) {
                         discards.push_back(out);
 
                         if (!aiDidSelfGang) {
-                            if (std::rand() % 2 == 0) {
+                            // 1. 荷官 100% 必报出打出的牌名（走独立音效通道，绝不与角色语音冲突）
+                            Mix_Chunk* tv = ai.tileVoices[out.suit][out.val];
+                            if (tv) {
+                                Mix_VolumeChunk(tv, (gVolVoice * MIX_MAX_VOLUME) / 100);
+                                Mix_PlayChannel(1, tv, 0);
+                            } else {
+                                playSfx(gSfxPlay);
+                            }
+
+                            // 2. 气泡与性格吐槽：70% 报牌名，30% 顺带吐槽一句（不打断荷官报牌）
+                            if (std::rand() % 10 < 3) {
                                 int lineIdx = std::rand() % (int)ai.lines.size();
                                 ai.bubble = ai.lines.at(lineIdx);
-                                playVoice(ai.lineVoices.at(lineIdx), gSfxTaunt ? gSfxTaunt : gSfxPlay, false);
+                                playVoice(ai.lineVoices.at(lineIdx), nullptr, false);
                             } else {
                                 if (turn == 0) ai.bubble = "打一张【" + out.label + "】~";
                                 else if (turn == 1) ai.bubble = "出牌，【" + out.label + "】。";
                                 else ai.bubble = "接招吧，【" + out.label + "】！";
-
-                                Mix_Chunk* tv = ai.tileVoices[out.suit][out.val];
-                                if (tv) playVoice(tv, gSfxPlay, false);
-                                else playSfx(gSfxPlay);
                             }
                         }
-
                         int whoDiscarded = turn;
                         turn = nextActiveSeat(turn);
 
@@ -1690,7 +1696,7 @@ int main(int argc, char* argv[]) {
                     ais.at(lastDiscardFrom).bubble = ais.at(lastDiscardFrom).loseLine;
                     playVoice(ais.at(lastDiscardFrom).loseVoice, gSfxHu);
                 } else {
-                    playSfx(gSfxHu);
+                    playVoice(gSfxHu, nullptr, true);
                 }
                 handleSeatWin(evaluateWinFull(3, "你", playerHand, playerMelds, gameMode, false, false,
                                               playerRiichiDeclared, playerIppatsu, actualDora, lastDiscardFrom, streakCount, wall), false, lastDiscardFrom);
@@ -1698,7 +1704,7 @@ int main(int argc, char* argv[]) {
                 discards.pop_back();
                 for (int k = 0; k < 3; ++k) removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
                 playerMelds.push_back({2, {lastDiscard, lastDiscard, lastDiscard, lastDiscard}});
-                playSfx(gSfxGang, gSfxPlay);
+                playVoice(gSfxGang, gSfxPlay, true);
                 applySichuanGangMoney(3, false);
                 playerDrawAndEnterTurn(true);
                 statusMsg = (gameMode == 2 ? "刮风明杠收税并补牌！" : "明杠成功并补牌！") + std::string("请打出一张牌");
@@ -1707,7 +1713,7 @@ int main(int argc, char* argv[]) {
                 removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
                 removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
                 playerMelds.push_back({1, {lastDiscard, lastDiscard, lastDiscard}});
-                playSfx(gSfxPeng, gSfxPlay);
+                playVoice(gSfxPeng, gSfxPlay, true);
                 std::sort(playerHand.begin(), playerHand.end());
                 cursor = 0; turn = 3; phase = 0; justDidGang = false;
                 statusMsg = "碰牌成功！请选择一张牌打出";
@@ -1723,7 +1729,7 @@ int main(int argc, char* argv[]) {
                 };
                 std::sort(meldTiles.begin(), meldTiles.end());
                 playerMelds.push_back({0, meldTiles});
-                playSfx(gSfxChi, gSfxPlay);
+                playVoice(gSfxChi, gSfxPlay, true);
                 std::sort(playerHand.begin(), playerHand.end());
                 cursor = 0; turn = 3; phase = 0; justDidGang = false;
                 statusMsg = "吃牌成功！请选择一张牌打出";
@@ -2064,5 +2070,9 @@ int main(int argc, char* argv[]) {
     Mix_CloseAudio();
     SDL_Quit();
     romfsExit();
+    if (appletGetAppletType() == AppletType_Application) {
+        appletRequestExit();
+    }
     return 0;
 }
+
