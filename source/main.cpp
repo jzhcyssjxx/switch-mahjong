@@ -1126,7 +1126,7 @@ int main(int argc, char* argv[]) {
             phase = 3;
             hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty());
             if (hasWinPanel) {
-                lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
+            lastWinResult = {3, std::string(gameMode == 4 ? "四川血流成河" : "四川血战到底") + "・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
             }
             statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
             return;
@@ -1205,7 +1205,7 @@ int main(int argc, char* argv[]) {
             if (pSc.at(1) < pSc.at(dingQueCursor)) dingQueCursor = 1;
             if (pSc.at(2) < pSc.at(dingQueCursor)) dingQueCursor = 2;
             phase = 4; // 进入开局定缺选择弹窗
-            statusMsg = "(四川血战到底) 请先选择本局定缺花色！";
+            statusMsg = std::string(gameMode == 4 ? "(四川血流成河)" : "(四川血战到底)") + " 请先选择本局定缺花色！";
         } else {
             phase = 0;
             if (gameMode == 0) statusMsg = "(台湾16张麻将) 选牌按(A)出牌";
@@ -1646,7 +1646,7 @@ int main(int argc, char* argv[]) {
             phase = 3;
             hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty());
             if (hasWinPanel) {
-            lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
+            lastWinResult = {3, std::string(gameMode == 4 ? "四川血流成河" : "四川血战到底") + "・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
                }
             statusMsg = "流局！牌堆已摸完，按(R)继续下一局";
                 } else {
