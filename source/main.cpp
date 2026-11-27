@@ -917,7 +917,7 @@ int main(int argc, char* argv[]) {
         drawText(ren, fontTitle, "音量与游戏设置", box.x + 195, box.y + 22, cGold);
         drawText(ren, fontSmall, "上下选项目 | 左右调音量(自动保存) | 按(+)或(B)返回", box.x + 85, box.y + 72, cCyan);
 
-        std::vector<std::string> labels = {"背景音乐 (BGM)", "角色语音 (AI配音)", "打牌音效 (吃碰杠)", "保存并退出游戏"};
+        std::vector<std::string> labels = {"背景音乐 (BGM)", "角色语音 (AI配音)", "打牌音效 (吃碰杠)", "保存设置 (按HOME回桌面)"};
         std::vector<int> vals = {gVolBgm, gVolVoice, gVolSfx, -1};
 
         for (int i = 0; i < 4; ++i) {
@@ -1377,7 +1377,8 @@ int main(int argc, char* argv[]) {
             }
             if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
                 saveVolumeConfig();
-                break;
+                playSfx(gSfxPlay);
+                showSettings = false;
             }
             if (kDown & HidNpadButton_B) { saveVolumeConfig(); showSettings = false; }
 
@@ -1419,7 +1420,7 @@ int main(int argc, char* argv[]) {
             SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255};
             SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255};
 
-            drawText(ren, fontTitle, "明星三缺一风格・全能麻将大厅", 390, 35, cGold);
+            drawText(ren, fontTitle, "今晚别想胡・全能麻将大厅", 435, 35, cGold);
             drawText(ren, fontSmall, "方向键选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 88, cWhite);
 
             struct ModeCard { std::string title, l1, l2, l3; };
@@ -2068,9 +2069,5 @@ int main(int argc, char* argv[]) {
     Mix_CloseAudio();
     SDL_Quit();
     romfsExit();
-    if (appletGetAppletType() == AppletType_Application) {
-        appletRequestExitToSelf();
-    }
     return 0;
 }
-
