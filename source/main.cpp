@@ -1339,6 +1339,7 @@ int main(int argc, char* argv[]) {
                 } else if (settingsCursor == 1) {
                     gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
                     playVoice(ais.lineVoices, gSfxTaunt);
+                }
                 } else if (settingsCursor == 2) {
                     gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
                     playSfx(gSfxPlay);
@@ -1544,9 +1545,7 @@ if (touchTapped) {
                     }
                 }
             }
-        }
-
-        else if (phase == 1) {
+        } else if (phase == 1) {
             if (turn < 0 || turn >= 3 || hasWonSeat.at(turn)) {
                 turn = nextActiveSeat(turn);
                 if (turn == 3) playerDrawAndEnterTurn(false);
