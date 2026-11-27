@@ -1355,7 +1355,7 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(ren);
             continue;
         }
-            if (inMenu) {
+        if (inMenu) {
             if (btnLeft || btnRight) {
                 menuCursor ^= 1;
                 playSfx(gSfxPlay);
