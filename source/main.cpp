@@ -1306,14 +1306,15 @@ int main(int argc, char* argv[]) {
         bool btnDown  = (kDown & (HidNpadButton_Down  | HidNpadButton_StickLDown)) != 0;
         bool btnLeft  = (kDown & (HidNpadButton_Left  | HidNpadButton_StickLLeft)) != 0;
         bool btnRight = (kDown & (HidNpadButton_Right | HidNpadButton_StickLRight)) != 0;
+
         bool touchTapped = false;
         int touchX = -1, touchY = -1;
         HidTouchScreenState touchState = {0};
         hidGetTouchScreenStates(&touchState, 1);
         if (touchState.count > 0 && prevTouch.count == 0) {
             touchTapped = true;
-            touchX = (int)touchState.touches[0].x;
-            touchY = (int)touchState.touches[0].y;
+            touchX = (int)touchState.touches.x;
+            touchY = (int)touchState.touches.y;
         }
         prevTouch = touchState;
 
@@ -1324,6 +1325,7 @@ int main(int argc, char* argv[]) {
             showSettings = !showSettings;
         }
 
+        if (showSettings) {
             if (btnUp) settingsCursor = (settingsCursor + 3) % 4;
             if (btnDown) settingsCursor = (settingsCursor + 1) % 4;
             int delta = 0;
@@ -1336,7 +1338,7 @@ int main(int argc, char* argv[]) {
                     applyBgmVolume();
                 } else if (settingsCursor == 1) {
                     gVolVoice = std::max(0, std::min(100, gVolVoice + delta));
-                    playVoice(ais[0].lineVoices[0], gSfxTaunt);
+                    playVoice(ais.lineVoices, gSfxTaunt);
                 } else if (settingsCursor == 2) {
                     gVolSfx = std::max(0, std::min(100, gVolSfx + delta));
                     playSfx(gSfxPlay);
@@ -1353,7 +1355,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        if (inMenu) {
+            if (inMenu) {
             if (btnLeft || btnRight) {
                 menuCursor ^= 1;
                 playSfx(gSfxPlay);
