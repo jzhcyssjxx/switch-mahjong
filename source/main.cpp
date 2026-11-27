@@ -1327,7 +1327,7 @@ int main(int argc, char* argv[]) {
     checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
         if (hasWonSeat.at(3)) return false;
         optHu = false; optGang = false; optPeng = false; optChis.clear();
-        bool allow7 = (gameMode == 1 || (gameMode == 2 || gameMode == 4) || gameMode == 3);
+        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3 || gameMode == 4 || gameMode == 5);
         bool noVoidLeft = !hasVoidTiles(playerHand, voidSuit.at(3));
         auto testWin = playerHand;
         testWin.push_back(t);
@@ -1338,9 +1338,7 @@ int main(int argc, char* argv[]) {
             int same = countTile(playerHand, t);
             if (same >= 3) optGang = true;
             if (same >= 2) optPeng = true;
-            4. 
-	• 
-		• if (gameMode != 2 && gameMode != 4 && fromSeat == 2 && t.suit < 3) {
+            if (gameMode != 2 && gameMode != 4 && fromSeat == 2 && t.suit < 3) {
                 int v = t.val;
                 if (hasTileVal(playerHand, t.suit, v - 2) && hasTileVal(playerHand, t.suit, v - 1)) optChis.push_back({v - 2, v - 1});
                 if (hasTileVal(playerHand, t.suit, v - 1) && hasTileVal(playerHand, t.suit, v + 1)) optChis.push_back({v - 1, v + 1});
@@ -1532,7 +1530,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        bool allow7 = (gameMode == 1 || (gameMode == 2 || gameMode == 4) || gameMode == 3);
+        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3 || gameMode == 4 || gameMode == 5);
         if (phase == 0 && !playerHand.empty()) {
             if (touchTapped && touchX >= 430 && touchX <= 870 && touchY >= 458 && touchY <= 502) {
                 kDown |= HidNpadButton_L;
@@ -1961,7 +1959,7 @@ int main(int argc, char* argv[]) {
             SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
             SDL_RenderDrawRect(ren, &dqBox);
 
-            drawText(ren, fontBig, "四川血战到底：请选择本局【定缺花色】", dqBox.x + 115, dqBox.y + 20, cGold);
+            drawText(ren, fontBig, (gameMode == 4 ? "四川血流成河" : "四川血战到底") + std::string("：请选择本局【定缺花色】"), dqBox.x + 115, dqBox.y + 20, cGold);
             drawText(ren, fontSmall, "左右方向键选择要弃用的花色，按 (A) 确认开始打牌", dqBox.x + 125, dqBox.y + 62, cCyan);
 
             std::vector<std::string> dqNames = {"定缺【万子】", "定缺【筒子】", "定缺【条子】"};
@@ -2025,7 +2023,7 @@ int main(int argc, char* argv[]) {
 
             std::string panelHint = matchOverByBankrupt
                 ? "【有人负分破产・比赛已结束】按(R)或点屏幕重置50,000分新开比赛 | 按(-)回大厅"
-                : "按(R)或点屏幕继续下一局 | 按住(L+R)重置筹码 | 按(-)返回四模式大厅";
+                : "按(R)或点屏幕继续下一局 | 按住(L+R)重置筹码 | 按(-)返回六模式大厅";
             drawText(ren, fontSmall, panelHint, panel.x + 30, panel.y + panelH - 42, cYellow);
         }
 
