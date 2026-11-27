@@ -261,7 +261,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
     bool hasDragon = false, isTanyao = false, isFlush = false, isHalfFlush = false;
     analyzeTraits(hand, melds, hasDragon, isTanyao, isFlush, isHalfFlush);
     bool isToitoi = (!hasChowMeld && canWinShape(hand, false, false));
-    bool isChiitoi = ((gameMode == 1 || gameMode == 3) && melds.empty() && isSevenPairs(hand));
+    bool isChiitoi = ((gameMode == 1 || gameMode == 3 || gameMode == 4 || gameMode == 5) && melds.empty() && isSevenPairs(hand));
 
     if (gameMode == 0) {
         int tai = 1;
@@ -339,7 +339,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
             res.scoreDeltas.at(winnerSeat) = totalPay;
         }
         res.details = desc;
-    } else if (gameMode == 2) {
+        } else if (gameMode == 2 || gameMode == 4) {
         // 模式三：四川血战到底正宗番型算分（底分 500，番数翻倍）
         int fan = 0;
         std::string desc = "平胡(1倍)";
@@ -372,7 +372,7 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
             res.scoreDeltas.at(winnerSeat) = basePay;
         }
         res.details = desc;
-    } else {
+    } else if (gameMode == 3) {
         // 模式四：广东推倒胡 + 4张买马开奖
         int mult = 1;
         std::string desc = "推倒平胡(1倍)";
@@ -405,6 +405,31 @@ WinResult evaluateWinFull(int winnerSeat, const std::string& winnerName, const s
         } else {
             int pay = baseScore * 2;
             res.title = "(广东推倒胡) " + winnerName + " 抢胡(点炮)！总计 " + std::to_string(mult) + " 倍";
+            res.scoreDeltas.at(loserSeat) = -pay;
+            res.scoreDeltas.at(winnerSeat) = pay;
+        }
+        res.details = desc;
+       } else if (gameMode == 5) {
+        // 模式六：经典大众麻将（无起胡门槛，精简国标经典番型）
+        int fan = 1;
+        std::string desc = "平胡(1番)";
+        if (isSelfDraw) { fan += 2; desc += " + 自摸(2番)"; }
+        if (isGangBloom) { fan += 4; desc += " + 杠上开花(4番)"; }
+        if (menQing) { fan += 2; desc += " + 门前清(2番)"; }
+        if (hasDragon) { fan += 2; desc += " + 箭刻(2番)"; }
+        if (isChiitoi) { fan += 12; desc += " + 七对子(12番)"; }
+        else if (isToitoi) { fan += 6; desc += " + 碰碰胡(6番)"; }
+        if (isFlush) { fan += 16; desc += " + 清一色(16番)"; }
+        else if (isHalfFlush) { fan += 6; desc += " + 混一色(6番)"; }
+
+        int unit = 300 * fan;
+        if (isSelfDraw) {
+            res.title = "(大众麻将) " + winnerName + " 自摸！共 " + std::to_string(fan) + " 番";
+            for (int i = 0; i < 4; ++i) if (i != winnerSeat) res.scoreDeltas.at(i) = -unit;
+            res.scoreDeltas.at(winnerSeat) = unit * 3;
+        } else {
+            int pay = unit * 2;
+            res.title = "(大众麻将) " + winnerName + " 点炮胡！共 " + std::to_string(fan) + " 番";
             res.scoreDeltas.at(loserSeat) = -pay;
             res.scoreDeltas.at(winnerSeat) = pay;
         }
@@ -988,7 +1013,7 @@ int main(int argc, char* argv[]) {
 
     // 四川血战：刮风下雨（明杠/暗杠立刻向未胡牌玩家收取杠钱）
     auto applySichuanGangMoney = [&](int seat, bool isAnGang) {
-        if (gameMode != 2) return;
+        if (gameMode != 2 && gameMode != 4) return;
         int unit = isAnGang ? 600 : 300;
         int gain = 0;
         for (int i = 0; i < 4; ++i) {
@@ -1013,7 +1038,7 @@ int main(int argc, char* argv[]) {
     // 统一胡牌处理：普通模式直接结束，四川血战模式允许多人连续胡牌直到剩下 1 家未胡！
     auto handleSeatWin = [&](WinResult res, bool isSelfDraw, int loserSeat) {
         spawnWinParticles();
-        if (gameMode != 2) {
+        if (gameMode != 2 && gameMode != 4) {
             lastWinResult = res;
             for (int i = 0; i < 3; ++i) ais.at(i).score += res.scoreDeltas.at(i);
             playerScore += res.scoreDeltas.at(3);
@@ -1054,7 +1079,47 @@ int main(int argc, char* argv[]) {
         if (w == 3) playerScore += totalWin;
         else ais.at(w).score += totalWin;
 
-        hasWonSeat.at(w) = true;
+                if (gameMode == 2) hasWonSeat.at(w) = true;
+        xuezhanLogs.push_back(res.title + " (+" + std::to_string(totalWin) + ") [" + res.details + "]");
+
+        // 血战剩<=1人结束；血流成河必须打到牌墙摸光才结束！
+        if ((gameMode == 2 && activeUnwonCount() <= 1) || wall.empty()) {
+            lastWinResult = res;
+            std::string mTag = (gameMode == 4) ? "四川血流成河" : "四川血战到底";
+            lastWinResult.title = mTag + "・本局总结算 (共 " + std::to_string(xuezhanLogs.size()) + " 次胡/杠)";
+            lastWinResult.details = xuezhanLogs.back();
+            if (hasWonSeat.at(3) || playerScore >= 50000) totalWins++;
+            else totalLosses++;
+
+            if (playerScore < 0 || ais.at(0).score < 0 || ais.at(1).score < 0 || ais.at(2).score < 0) {
+                matchOverByBankrupt = true;
+                lastWinResult.title = "【破产打飞・" + mTag + "结束】";
+                statusMsg = "有人负分破产，比赛结束！按(R)重置50000分新开比赛 | (-)回大厅";
+            } else {
+                statusMsg = mTag + "结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
+            }
+            hasWinPanel = true;
+            phase = 3;
+        } else {
+            // 如果是别人点炮胡的，把刚点炮进手的那张牌从胡牌者手里移出，保持手牌张数正常继续打！
+            if (!isSelfDraw) {
+                if (w == 3) {
+                    removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
+                    std::sort(playerHand.begin(), playerHand.end());
+                } else {
+                    removeOneTile(ais.at(w).hand, lastDiscard.suit, lastDiscard.val);
+                }
+            }
+            int nxt = nextActiveSeat(w);
+            statusMsg = res.title + (gameMode == 4 ? "！血流继续连胡，轮到下一家..." : "！血战继续，轮到下一家...");
+            if (nxt == 3) {
+                playerHand.push_back(wall.back()); wall.pop_back();
+                cursor = std::max(0, (int)playerHand.size() - 1);
+                turn = 3; phase = 0; justDidGang = false;
+            } else {
+                turn = nxt; phase = 1; aiTimer = SDL_GetTicks();
+            }
+        }
         xuezhanLogs.push_back(res.title + " (+" + std::to_string(totalWin) + ") [" + res.details + "]");
 
         // 如果只剩 <= 1 家未胡牌，血战彻底结束！
@@ -1090,7 +1155,7 @@ int main(int argc, char* argv[]) {
         auto playerDrawAndEnterTurn = [&](bool fromGang) {
                 if (wall.empty()) {
             phase = 3;
-            hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
+            hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty())
             if (hasWinPanel) {
                 lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
             }
@@ -1132,7 +1197,7 @@ int main(int argc, char* argv[]) {
         } else {
             roundNum++;
         }
-        wall = buildWall(gameMode == 2); // 四川模式去掉字牌，只用 108 张万筒条
+        wall = buildWall(gameMode == 2 || gameMode == 4) // 四川模式去掉字牌，只用 108 张万筒条
         if (gameMode == 1) {
             doraIndicator = wall.back(); wall.pop_back();
             actualDora = getNextDoraTile(doraIndicator);
@@ -1153,9 +1218,9 @@ int main(int argc, char* argv[]) {
         }
         playerHand.push_back(wall.back()); wall.pop_back();
         std::sort(playerHand.begin(), playerHand.end());
-        cursor = 0; turn = 3;
+        cursor = std::max(0, (int)playerHand.size() - 1); turn = 3;
 
-        if (gameMode == 2) {
+        if (gameMode == 2 || gameMode == 4) {
             for (int i = 0; i < 3; ++i) {
                 std::vector<int> sc = {0, 0, 0};
                 for (const auto& t : ais.at(i).hand) if (t.suit < 3) sc.at(t.suit)++;
@@ -1176,19 +1241,20 @@ int main(int argc, char* argv[]) {
             phase = 0;
             if (gameMode == 0) statusMsg = "(台湾16张麻将) 选牌按(A)出牌";
             else if (gameMode == 1) statusMsg = "(日本立直麻将) 选牌按(A)出牌";
-            else statusMsg = "(广东推倒胡・带买马) 选牌按(A)出牌";
+            else if (gameMode == 3) statusMsg = "(广东推倒胡・带买马) 选牌按(A)出牌";
+            else statusMsg = "(经典大众麻将・全国通用) 选牌按(A)出牌";
 
-            bool allow7 = (gameMode == 1 || gameMode == 3);
+            bool allow7 = (gameMode == 1 || gameMode == 3 || gameMode == 5);
             if (canWinShape(playerHand, allow7, true)) statusMsg += " | 天胡！按(Y)胡牌！";
         }
     };
     std::function<bool(const Tile&, int)> checkPlayerReactions;
     auto tryAIReactions = [&](const Tile& t, int fromSeat) -> bool {
-        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
+        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3 || gameMode == 4 || gameMode == 5);
         for (int step = 1; step <= 3; ++step) {
             int seat = (fromSeat + step) % 4;
             if (seat == 3 || seat == fromSeat || hasWonSeat.at(seat)) continue;
-            if (gameMode == 2 && hasVoidTiles(ais.at(seat).hand, voidSuit.at(seat))) continue;
+            if ((gameMode == 2 || gameMode == 4) && hasVoidTiles(ais.at(seat).hand, voidSuit.at(seat))) continue;
             auto aiTest = ais.at(seat).hand;
             aiTest.push_back(t);
             if (canWinShape(aiTest, allow7, true)) {
@@ -1204,7 +1270,7 @@ int main(int argc, char* argv[]) {
         for (int step = 1; step <= 3; ++step) {
             int seat = (fromSeat + step) % 4;
             if (seat == 3 || seat == fromSeat || hasWonSeat.at(seat)) continue;
-            if (gameMode == 2 && t.suit == voidSuit.at(seat)) continue;
+            if ((gameMode == 2 || gameMode == 4) && t.suit == voidSuit.at(seat)) continue;
             AIPlayer& ai = ais.at(seat);
             int same = countTile(ai.hand, t);
             if (same >= 3 && !wall.empty()) {
@@ -1292,14 +1358,14 @@ int main(int argc, char* argv[]) {
     checkPlayerReactions = [&](const Tile& t, int fromSeat) -> bool {
         if (hasWonSeat.at(3)) return false;
         optHu = false; optGang = false; optPeng = false; optChis.clear();
-        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
+        bool allow7 = (gameMode == 1 || (gameMode == 2 || gameMode == 4) || gameMode == 3);
         bool noVoidLeft = !hasVoidTiles(playerHand, voidSuit.at(3));
         auto testWin = playerHand;
         testWin.push_back(t);
         if (noVoidLeft && canWinShape(testWin, allow7, true)) {
             if (gameMode != 1 || checkHasValidRiichiYaku(testWin, playerMelds, false, playerRiichiDeclared)) optHu = true;
         }
-        if (!playerRiichiDeclared && !(gameMode == 2 && t.suit == voidSuit.at(3))) {
+        if (!playerRiichiDeclared && !((gameMode == 2 || gameMode == 4) && t.suit == voidSuit.at(3))) {
             int same = countTile(playerHand, t);
             if (same >= 3) optGang = true;
             if (same >= 2) optPeng = true;
@@ -1489,7 +1555,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
+        bool allow7 = (gameMode == 1 || (gameMode == 2 || gameMode == 4) || gameMode == 3);
         if (phase == 0 && !playerHand.empty()) {
             if (touchTapped && touchX >= 430 && touchX <= 870 && touchY >= 458 && touchY <= 502) {
                 kDown |= HidNpadButton_L;
@@ -1548,7 +1614,7 @@ int main(int argc, char* argv[]) {
                 Tile gangTile{0, 1, ""};
                 for (size_t i = 0; i < playerHand.size(); ++i) {
                     Tile cand = playerHand.at(i);
-                    if (gameMode == 2 && cand.suit == voidSuit.at(3)) continue;
+                    if ((gameMode == 2 || gameMode == 4) && cand.suit == voidSuit.at(3)) continue;
                     if (countTile(playerHand, cand) == 4) {
                         gangTile = cand;
                         didGang = true; isAnGang = true;
@@ -1574,11 +1640,11 @@ int main(int argc, char* argv[]) {
                     playVoice(gSfxGang, gSfxPlay, true);
                     applySichuanGangMoney(3, isAnGang);
                     playerDrawAndEnterTurn(true);
-                    statusMsg = (gameMode == 2 ? "刮风下雨收税成功！" : "开杠补牌成功！") + std::string("请选择一张打出");
+                    statusMsg = ((gameMode == 2 || gameMode == 4) ? "刮风下雨收税成功！" : "开杠补牌成功！") + std::string("请选择一张打出");
                 }
             } else if (kDown & HidNpadButton_A) {
                 Tile out = playerHand.at(cursor);
-                if (gameMode == 2 && !noVoidLeft && out.suit != voidSuit.at(3)) {
+                if ((gameMode == 2 || gameMode == 4) && !noVoidLeft && out.suit != voidSuit.at(3)) {
                     statusMsg = "【四川规则】手里还有定缺【" + suitNameCN(voidSuit.at(3)) + "】，必须先打完定缺牌！";
                 } else {
                     playerHand.erase(playerHand.begin() + cursor);
@@ -1603,7 +1669,7 @@ int main(int argc, char* argv[]) {
             } else if (SDL_GetTicks() - aiTimer >= 1500) {
             if (wall.empty()) {
             phase = 3;
-            hasWinPanel = (gameMode == 2 && !xuezhanLogs.empty());
+            hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty());
             if (hasWinPanel) {
             lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
                }
@@ -1615,7 +1681,7 @@ int main(int argc, char* argv[]) {
                     Tile aiGangTile{0, 1, ""};
                     for (size_t i = 0; i < ai.hand.size(); ++i) {
                         Tile cand = ai.hand.at(i);
-                        if (gameMode == 2 && cand.suit == voidSuit.at(turn)) continue;
+                        if ((gameMode == 2 || gameMode == 4) && cand.suit == voidSuit.at(turn)) continue;
                         if (countTile(ai.hand, cand) == 4 && !wall.empty()) {
                             aiGangTile = cand;
                             aiDidSelfGang = true;
@@ -1716,7 +1782,7 @@ int main(int argc, char* argv[]) {
                 playVoice(gSfxGang, gSfxPlay, true);
                 applySichuanGangMoney(3, false);
                 playerDrawAndEnterTurn(true);
-                statusMsg = (gameMode == 2 ? "刮风明杠收税并补牌！" : "明杠成功并补牌！") + std::string("请打出一张牌");
+                statusMsg = ((gameMode == 2 || gameMode == 4) ? "刮风明杠收税并补牌！" : "明杠成功并补牌！") + std::string("请打出一张牌");
             } else if ((kDown & HidNpadButton_X) && optPeng) {
                 discards.pop_back();
                 removeOneTile(playerHand, lastDiscard.suit, lastDiscard.val);
@@ -1752,7 +1818,7 @@ int main(int argc, char* argv[]) {
 
         SDL_Color bgCol = {20, 83, 45, 255};
         if (gameMode == 1) bgCol = {18, 65, 75, 255};
-        else if (gameMode == 2) bgCol = {75, 28, 32, 255};
+        else if (gameMode == 2 || gameMode == 4) bgCol = {75, 28, 32, 255};
         else if (gameMode == 3) bgCol = {28, 52, 88, 255};
         SDL_SetRenderDrawColor(ren, bgCol.r, bgCol.g, bgCol.b, 255);
         SDL_RenderClear(ren);
@@ -1879,14 +1945,14 @@ int main(int argc, char* argv[]) {
         std::string riverTitle = "";
         if (gameMode == 0) riverTitle = "中央牌河 (台湾16张 | 当前连庄: " + std::to_string(streakCount) + ")";
         else if (gameMode == 1) riverTitle = "中央牌河 (宝牌指示: " + doraIndicator.label + " -> 宝牌: " + actualDora.label + ")";
-        else if (gameMode == 2) {
+        else if (gameMode == 2 || gameMode == 4) {
             riverTitle = "四川血战 | 缺门: 上家[" + suitNameCN(voidSuit.at(2)) + "] 对家[" + suitNameCN(voidSuit.at(1)) +
                          "] 下家[" + suitNameCN(voidSuit.at(0)) + "] 你[" + suitNameCN(voidSuit.at(3)) + "]";
         } else riverTitle = "中央牌河 (广东推倒胡 | 1/5/9及东风中马翻倍)";
         drawText(ren, fontSmall, riverTitle, river.x + 16, river.y + 8, cWhite);
 
         // 四川血战模式：若已有玩家胡牌，在中央牌河右上角亮出金色“[已胡牌]”播报徽章
-        if (gameMode == 2) {
+        if (gameMode == 2 || gameMode == 4) {
             std::string wonBanner = "";
             if (hasWonSeat.at(0)) wonBanner += "[下家已胡] ";
             if (hasWonSeat.at(1)) wonBanner += "[对家已胡] ";
@@ -1935,7 +2001,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (phase == 3 && hasWinPanel) {
-            int extraH = (gameMode == 2 && xuezhanLogs.size() > 1) ? std::min((int)xuezhanLogs.size(), 5) * 28 : 0;
+            int extraH = ((gameMode == 2 || gameMode == 4) && xuezhanLogs.size() > 1) ? std::min((int)xuezhanLogs.size(), 5) * 28 : 0;
             int panelH = (lastWinResult.horseTiles.empty() ? 240 : 300) + extraH;
             SDL_Rect panel = {210, 145, 860, panelH};
             SDL_SetRenderDrawColor(ren, lastWinResult.winnerSeat == 3 ? 120 : 40, 20, 20, 245);
@@ -1945,7 +2011,7 @@ int main(int argc, char* argv[]) {
 
             drawText(ren, fontBig, lastWinResult.title, panel.x + 30, panel.y + 18, cGold);
 
-            if (gameMode == 2 && !xuezhanLogs.empty()) {
+            if ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty()) {
                 int showCnt = std::min((int)xuezhanLogs.size(), 5);
                 for (int idx = 0; idx < showCnt; ++idx) {
                     drawText(ren, fontSmall, "• " + xuezhanLogs.at(idx), panel.x + 30, panel.y + 62 + idx * 30, idx % 2 == 0 ? cWhite : cCyan);
@@ -1984,7 +2050,7 @@ int main(int argc, char* argv[]) {
         if (phase == 0 && !playerRiichiDeclared) {
             std::string gangNotice = "";
             for (const auto& t : playerHand) {
-                if (gameMode == 2 && t.suit == voidSuit.at(3)) continue;
+                if ((gameMode == 2 || gameMode == 4) && t.suit == voidSuit.at(3)) continue;
                 if (countTile(playerHand, t) == 4) {
                     gangNotice = "★ 手牌有四张【" + t.label + "】可暗杠！按(L)或点此开杠 ★";
                     break;
