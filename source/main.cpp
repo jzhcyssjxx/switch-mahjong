@@ -1106,6 +1106,12 @@ int main(int argc, char* argv[]) {
             statusMsg = "(四川定缺:缺" + suitNameCN(voidSuit.at(3)) + ") 请优先打出【" + suitNameCN(voidSuit.at(3)) + "】字牌！";
         } else {
             statusMsg = "你的回合：左右选牌，(A)出牌";
+            for (const auto& m : playerMelds) {
+                if (m.type == 1 && hasTileVal(playerHand, m.tiles.at(0).suit, m.tiles.at(0).val)) {
+                    statusMsg += " | ★可加杠【" + m.tiles.at(0).label + "】按(L)开杠！";
+                    break;
+                }
+            }
             if (noVoidLeft && canWinShape(playerHand, allow7, true)) statusMsg += " | 按(Y)自摸胡牌！";
         }
     };
@@ -1473,6 +1479,9 @@ int main(int argc, char* argv[]) {
         }
         bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
         if (phase == 0 && !playerHand.empty()) {
+            if (touchTapped && touchX >= 430 && touchX <= 870 && touchY >= 458 && touchY <= 502) {
+                kDown |= HidNpadButton_L;
+            }
             if (touchTapped && touchY >= 505 && touchY <= 665) {
                 int calcX = 30 + (int)playerMelds.size() * 170;
                 bool hasDrawn = (playerHand.size() % 3 == 2);
@@ -1526,21 +1535,28 @@ int main(int argc, char* argv[]) {
             } else if (!playerRiichiDeclared && (kDown & HidNpadButton_L)) {
                 bool didGang = false;
                 bool isAnGang = false;
-                for (const auto& t : playerHand) {
-                    if (gameMode == 2 && t.suit == voidSuit.at(3)) continue;
-                    if (countTile(playerHand, t) == 4) {
-                        for (int k = 0; k < 4; ++k) removeOneTile(playerHand, t.suit, t.val);
-                        playerMelds.push_back({3, {t, t, t, t}});
-                        didGang = true; isAnGang = true; break;
+                Tile gangTile{0, 1, ""};
+                for (size_t i = 0; i < playerHand.size(); ++i) {
+                    Tile cand = playerHand.at(i);
+                    if (gameMode == 2 && cand.suit == voidSuit.at(3)) continue;
+                    if (countTile(playerHand, cand) == 4) {
+                        gangTile = cand;
+                        didGang = true; isAnGang = true;
+                        break;
                     }
                 }
-                if (!didGang) {
+                if (didGang) {
+                    for (int k = 0; k < 4; ++k) removeOneTile(playerHand, gangTile.suit, gangTile.val);
+                    playerMelds.push_back({3, {gangTile, gangTile, gangTile, gangTile}});
+                } else {
                     for (auto& m : playerMelds) {
                         Tile firstTile = m.tiles.at(0);
                         if (m.type == 1 && hasTileVal(playerHand, firstTile.suit, firstTile.val)) {
                             removeOneTile(playerHand, firstTile.suit, firstTile.val);
-                            m.type = 2; m.tiles.push_back(firstTile);
-                            didGang = true; isAnGang = false; break;
+                            m.type = 2;
+                            m.tiles = {firstTile, firstTile, firstTile, firstTile};
+                            didGang = true; isAnGang = false;
+                            break;
                         }
                     }
                 }
@@ -1586,18 +1602,23 @@ int main(int argc, char* argv[]) {
                     AIPlayer& ai = ais.at(turn);
                     ai.hand.push_back(wall.back()); wall.pop_back();
                     bool aiDidSelfGang = false;
-
-                    for (const auto& t : ai.hand) {
-                        if (gameMode == 2 && t.suit == voidSuit.at(turn)) continue;
-                        if (countTile(ai.hand, t) == 4 && !wall.empty()) {
-                            for (int k = 0; k < 4; ++k) removeOneTile(ai.hand, t.suit, t.val);
-                            ai.melds.push_back({3, {t, t, t, t}});
-                            ai.bubble = ai.gangLine;
-                            playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
-                            applySichuanGangMoney(turn, true);
-                            ai.hand.push_back(wall.back()); wall.pop_back();
-                            aiDidSelfGang = true; break;
+                    Tile aiGangTile{0, 1, ""};
+                    for (size_t i = 0; i < ai.hand.size(); ++i) {
+                        Tile cand = ai.hand.at(i);
+                        if (gameMode == 2 && cand.suit == voidSuit.at(turn)) continue;
+                        if (countTile(ai.hand, cand) == 4 && !wall.empty()) {
+                            aiGangTile = cand;
+                            aiDidSelfGang = true;
+                            break;
                         }
+                    }
+                    if (aiDidSelfGang) {
+                        for (int k = 0; k < 4; ++k) removeOneTile(ai.hand, aiGangTile.suit, aiGangTile.val);
+                        ai.melds.push_back({3, {aiGangTile, aiGangTile, aiGangTile, aiGangTile}});
+                        ai.bubble = ai.gangLine;
+                        playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
+                        applySichuanGangMoney(turn, true);
+                        ai.hand.push_back(wall.back()); wall.pop_back();
                     }
                     if (!aiDidSelfGang && !wall.empty()) {
                         for (auto& m : ai.melds) {
@@ -1946,13 +1967,29 @@ int main(int argc, char* argv[]) {
         std::string infoLine = "";
         if (playerRiichiDeclared) infoLine += "(已立直) ";
         if (phase == 0 && !playerRiichiDeclared) {
-            bool canSelfGang = false;
-            for (const auto& t : playerHand) if (countTile(playerHand, t) == 4) canSelfGang = true;
+            std::string gangNotice = "";
+            for (const auto& t : playerHand) {
+                if (gameMode == 2 && t.suit == voidSuit.at(3)) continue;
+                if (countTile(playerHand, t) == 4) {
+                    gangNotice = "★ 手牌有四张【" + t.label + "】可暗杠！按(L)或点此开杠 ★";
+                    break;
+                }
+            }
             for (const auto& m : playerMelds) {
                 Tile firstTile = m.tiles.at(0);
-                if (m.type == 1 && hasTileVal(playerHand, firstTile.suit, firstTile.val)) canSelfGang = true;
+                if (m.type == 1 && hasTileVal(playerHand, firstTile.suit, firstTile.val)) {
+                    gangNotice = "★ 摸到碰牌【" + firstTile.label + "】可加杠！按(L)或点此开杠 ★";
+                    break;
+                }
             }
-            if (canSelfGang) infoLine += "(按L键开杠) ";
+            if (!gangNotice.empty()) {
+                SDL_Rect gBanner = {430, 460, 440, 40};
+                SDL_SetRenderDrawColor(ren, 180, 35, 35, 245);
+                SDL_RenderFillRect(ren, &gBanner);
+                SDL_SetRenderDrawColor(ren, 253, 224, 71, 255);
+                SDL_RenderDrawRect(ren, &gBanner);
+                drawText(ren, fontSmall, gangNotice, gBanner.x + 14, gBanner.y + 9, cYellow);
+            }
             if (gameMode == 1) {
                 bool menQing = true;
                 for (const auto& m : playerMelds) if (m.type != 3) menQing = false;
@@ -2022,38 +2059,8 @@ int main(int argc, char* argv[]) {
     }
 
     saveVolumeConfig();
-    Mix_HaltChannel(-1);
-    Mix_HaltMusic();
     if (fLog) fclose(fLog);
-    for (auto* t : aiNormal) if (t) SDL_DestroyTexture(t);
-    for (auto* t : aiWin) if (t) SDL_DestroyTexture(t);
-    for (auto* t : aiLose) if (t) SDL_DestroyTexture(t);
-    for (auto& ai : ais) {
-        for (auto* v : ai.lineVoices) if (v) Mix_FreeChunk(v);
-        if (ai.huVoice) Mix_FreeChunk(ai.huVoice);
-        if (ai.loseVoice) Mix_FreeChunk(ai.loseVoice);
-        if (ai.chiVoice) Mix_FreeChunk(ai.chiVoice);
-        if (ai.pengVoice) Mix_FreeChunk(ai.pengVoice);
-               if (ai.gangVoice) Mix_FreeChunk(ai.gangVoice);
-        for (int s = 0; s < 4; ++s)
-            for (int v = 1; v <= 9; ++v)
-                if (ai.tileVoices[s][v]) Mix_FreeChunk(ai.tileVoices[s][v]);
-    }
-    if (gSfxPlay) Mix_FreeChunk(gSfxPlay);
-    if (gSfxChi) Mix_FreeChunk(gSfxChi);
-    if (gSfxPeng) Mix_FreeChunk(gSfxPeng);
-    if (gSfxGang) Mix_FreeChunk(gSfxGang);
-    if (gSfxHu) Mix_FreeChunk(gSfxHu);
-    if (gSfxTaunt) Mix_FreeChunk(gSfxTaunt);
-    for (auto* m : gBgmList) Mix_FreeMusic(m);
-    for (auto& kv : gTextCache) if (kv.second.tex) SDL_DestroyTexture(kv.second.tex); gTextCache.clear();
-    if (fontTitle) TTF_CloseFont(fontTitle);
-    if (fontBig) TTF_CloseFont(fontBig);
-    if (fontSmall) TTF_CloseFont(fontSmall);
-    Mix_CloseAudio();
-    IMG_Quit();
-    TTF_Quit();
-    SDL_Quit();
     romfsExit();
+    svcExitProcess();
     return 0;
 }
