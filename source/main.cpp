@@ -1466,7 +1466,6 @@ int main(int argc, char* argv[]) {
             if (!playerRiichiDeclared) {
                 if (btnLeft) cursor = (cursor - 1 + (int)playerHand.size()) % (int)playerHand.size();
                 if (btnRight) cursor = (cursor + 1) % (int)playerHand.size();
-            }
             } else {
                 cursor = (int)playerHand.size() - 1;
             }
