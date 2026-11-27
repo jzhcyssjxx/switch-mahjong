@@ -1374,10 +1374,8 @@ int main(int argc, char* argv[]) {
                     playSfx(gSfxPlay);
                 }
                 saveVolumeConfig();
-            }
             if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
                 saveVolumeConfig();
-                appletRequestExit();
                 break;
             }
             if (kDown & HidNpadButton_B) { saveVolumeConfig(); showSettings = false; }
@@ -2070,7 +2068,7 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     romfsExit();
     if (appletGetAppletType() == AppletType_Application) {
-        appletRequestExit();
+        appletRequestExitToSelf();
     }
     return 0;
 }
