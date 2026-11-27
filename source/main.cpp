@@ -1079,7 +1079,7 @@ int main(int argc, char* argv[]) {
         if (w == 3) playerScore += totalWin;
         else ais.at(w).score += totalWin;
 
-                if (gameMode == 2) hasWonSeat.at(w) = true;
+        if (gameMode == 2) hasWonSeat.at(w) = true;
         xuezhanLogs.push_back(res.title + " (+" + std::to_string(totalWin) + ") [" + res.details + "]");
 
         // 血战剩<=1人结束；血流成河必须打到牌墙摸光才结束！
@@ -1120,42 +1120,11 @@ int main(int argc, char* argv[]) {
                 turn = nxt; phase = 1; aiTimer = SDL_GetTicks();
             }
         }
-        xuezhanLogs.push_back(res.title + " (+" + std::to_string(totalWin) + ") [" + res.details + "]");
-
-        // 如果只剩 <= 1 家未胡牌，血战彻底结束！
-        if (activeUnwonCount() <= 1 || wall.empty()) {
-            lastWinResult = res;
-            lastWinResult.title = "四川血战到底・本局总结算 (共 " + std::to_string(xuezhanLogs.size()) + " 次胡/杠)";
-            lastWinResult.details = xuezhanLogs.back();
-            if (hasWonSeat.at(3)) totalWins++;
-            else totalLosses++;
-
-            if (playerScore < 0 || ais.at(0).score < 0 || ais.at(1).score < 0 || ais.at(2).score < 0) {
-                matchOverByBankrupt = true;
-                lastWinResult.title = "【破产打飞・血战比赛结束】";
-                statusMsg = "有人负分破产，比赛结束！按(R)重置50000分新开比赛 | (-)回大厅";
-            } else {
-                statusMsg = "血战结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
-            }
-            hasWinPanel = true;
-            phase = 3;
-        } else {
-            // 牌局继续！由胡牌者的下一位未胡玩家接力摸牌
-            int nxt = nextActiveSeat(w);
-            statusMsg = res.title + "！血战继续，轮到下一家...";
-            if (nxt == 3) {
-                playerHand.push_back(wall.back()); wall.pop_back();
-                cursor = std::max(0, (int)playerHand.size() - 1);
-                turn = 3; phase = 0; justDidGang = false;
-            } else {
-                turn = nxt; phase = 1; aiTimer = SDL_GetTicks();
-            }
-        }
     };
         auto playerDrawAndEnterTurn = [&](bool fromGang) {
                 if (wall.empty()) {
             phase = 3;
-            hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty())
+            hasWinPanel = ((gameMode == 2 || gameMode == 4) && !xuezhanLogs.empty());
             if (hasWinPanel) {
                 lastWinResult = {3, "四川血战到底・牌墙摸完总结算", xuezhanLogs.back(), {0, 0, 0, 0}, {}, 0};
             }
@@ -1166,12 +1135,12 @@ int main(int argc, char* argv[]) {
         wall.pop_back();
         cursor = std::max(0, (int)playerHand.size() - 1);
         turn = 3; phase = 0; justDidGang = fromGang;
-        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3);
+        bool allow7 = (gameMode == 1 || gameMode == 2 || gameMode == 3 || gameMode == 4 || gameMode == 5);
         bool noVoidLeft = !hasVoidTiles(playerHand, voidSuit.at(3));
         if (playerRiichiDeclared) {
             statusMsg = "(立直中) 自动摸牌：按(A)摸切打出";
             if (canWinShape(playerHand, true, true)) statusMsg += " | 按(Y)立直自摸！";
-        } else if (gameMode == 2 && !noVoidLeft) {
+        } else if ((gameMode == 2 || gameMode == 4) && !noVoidLeft) {
             statusMsg = "(四川定缺:缺" + suitNameCN(voidSuit.at(3)) + ") 请优先打出【" + suitNameCN(voidSuit.at(3)) + "】字牌！";
         } else {
             statusMsg = "你的回合：左右选牌，(A)出牌";
@@ -1197,7 +1166,7 @@ int main(int argc, char* argv[]) {
         } else {
             roundNum++;
         }
-        wall = buildWall(gameMode == 2 || gameMode == 4) // 四川模式去掉字牌，只用 108 张万筒条
+        wall = buildWall(gameMode == 2 || gameMode == 4); // 四川模式去掉字牌，只用 108 张万筒条
         if (gameMode == 1) {
             doraIndicator = wall.back(); wall.pop_back();
             actualDora = getNextDoraTile(doraIndicator);
@@ -1319,7 +1288,7 @@ int main(int argc, char* argv[]) {
             }
         }
         int nextSeat = (fromSeat + 1) % 4;
-        if (gameMode != 2 && nextSeat != 3 && !hasWonSeat.at(nextSeat) && t.suit < 3 && ais.at(nextSeat).hand.size() >= 4) {
+        if (gameMode != 2 && gameMode != 4 && nextSeat != 3 && !hasWonSeat.at(nextSeat) && t.suit < 3 && ais.at(nextSeat).hand.size() >= 4) {
             AIPlayer& ai = ais.at(nextSeat);
             int v = t.val;
             int p1 = -1, p2 = -1;
@@ -1369,7 +1338,9 @@ int main(int argc, char* argv[]) {
             int same = countTile(playerHand, t);
             if (same >= 3) optGang = true;
             if (same >= 2) optPeng = true;
-            if (gameMode != 2 && fromSeat == 2 && t.suit < 3) {
+            4. 
+	• 
+		• if (gameMode != 2 && gameMode != 4 && fromSeat == 2 && t.suit < 3) {
                 int v = t.val;
                 if (hasTileVal(playerHand, t.suit, v - 2) && hasTileVal(playerHand, t.suit, v - 1)) optChis.push_back({v - 2, v - 1});
                 if (hasTileVal(playerHand, t.suit, v - 1) && hasTileVal(playerHand, t.suit, v + 1)) optChis.push_back({v - 1, v + 1});
@@ -1458,24 +1429,28 @@ int main(int argc, char* argv[]) {
         }
 
         if (inMenu) {
-            if (btnLeft || btnRight) {
-                menuCursor ^= 1;
+            if (btnLeft) {
+                menuCursor = (menuCursor % 3 == 0) ? (menuCursor + 2) : (menuCursor - 1);
+                playSfx(gSfxPlay);
+            }
+            if (btnRight) {
+                menuCursor = (menuCursor % 3 == 2) ? (menuCursor - 2) : (menuCursor + 1);
                 playSfx(gSfxPlay);
             }
             if (btnUp || btnDown) {
-                menuCursor ^= 2;
+                menuCursor = (menuCursor + 3) % 6;
                 playSfx(gSfxPlay);
             }
             if (touchTapped) {
-                for (int i = 0; i < 4; ++i) {
-                    int col = i % 2, row = i / 2;
-                    SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
+                for (int i = 0; i < 6; ++i) {
+                    int col = i % 3, row = i / 3;
+                    SDL_Rect cRect = {45 + col * 405, 135 + row * 275, 380, 245};
                     if (touchX >= cRect.x && touchX <= cRect.x + cRect.w && touchY >= cRect.y && touchY <= cRect.y + cRect.h) {
                         menuCursor = i;
                         kDown |= HidNpadButton_A;
                     }
                 }
-                        }
+            }
             if (hasPausedGame && (kDown & HidNpadButton_B)) {
                 inMenu = false;
                 playSfx(gSfxPlay);
@@ -1493,33 +1468,35 @@ int main(int argc, char* argv[]) {
             SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255};
             SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255};
 
-            drawText(ren, fontTitle, "今晚别想胡・全能麻将大厅", 435, 35, cGold);
+            drawText(ren, fontTitle, "今晚别想胡・六大麻将全能大厅", 415, 35, cGold);
             std::string menuSub = hasPausedGame
-                ? "方向键选玩法 | (A)开启新对局 | (B)返回刚才的牌局 | (ZL)换BGM | (+)设置"
-                : "方向键选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)临时回大厅";
-            drawText(ren, fontSmall, menuSub, 230, 88, hasPausedGame ? cGold : cWhite);
+                ? "方向键/摇杆/触控选玩法 | (A)新对局 | (B)继续刚才的牌局 | (ZL)换BGM | (+)设置"
+                : "方向键/摇杆/触控选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅";
+            drawText(ren, fontSmall, menuSub, 210, 88, hasPausedGame ? cGold : cWhite);
 
             struct ModeCard { std::string title, l1, l2, l3; };
             std::vector<ModeCard> cards = {
-                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄/清一色", "・初始筹码：50,000 分（负分破产结束）"},
-                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直 + 一发，满贯役满结算", "・初始点数：50,000 点（负分击飞结束）"},
-                {"3. 四川血战到底 (正式版)", "・108 张万筒条，起手定缺、刮风下雨收税", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：50,000 分（负分破产结束）"},
-                {"4. 广东推倒胡 (买马版)", "・13 张快节奏平胡，支持七对/碰碰/清一色", "・胡牌自动翻 4 张买马牌，中马直接翻倍！", "・初始筹码：50,000 分（负分破产结束）"}
+                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄", "・初始筹码：50,000 分（负分破产）"},
+                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直，满贯役满结算", "・初始点数：50,000 点（负分击飞）"},
+                {"3. 四川血战到底", "・108 张万筒条，起手定缺、刮风下雨", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：50,000 分（负分破产）"},
+                {"4. 广东推倒胡 (买马)", "・13 张快节奏平胡，七对/碰碰/清一色", "・胡牌翻 4 张买马牌，中马直接翻倍！", "・初始筹码：50,000 分（负分破产）"},
+                {"5. 四川血流成河", "・108 张万筒条，开局定缺、刮风下雨", "・胡牌不离场无限连胡，摸光牌墙才算账！", "・初始筹码：50,000 分（负分破产）"},
+                {"6. 经典大众麻将", "・136 张全国通用，支持吃/碰/杠/七对", "・无起胡门槛，清一色/碰碰胡经典算番", "・初始筹码：50,000 分（负分破产）"}
             };
 
-            for (int i = 0; i < 4; ++i) {
-                int col = i % 2, row = i / 2;
-                SDL_Rect cRect = {110 + col * 550, 135 + row * 275, 510, 245};
+            for (int i = 0; i < 6; ++i) {
+                int col = i % 3, row = i / 3;
+                SDL_Rect cRect = {45 + col * 405, 135 + row * 275, 380, 245};
                 bool sel = (menuCursor == i);
                 SDL_SetRenderDrawColor(ren, sel ? 254 : 20, sel ? 240 : 83, sel ? 138 : 45, 255);
                 SDL_RenderFillRect(ren, &cRect);
                 SDL_SetRenderDrawColor(ren, sel ? 251 : 45, sel ? 191 : 130, sel ? 36 : 80, 255);
                 SDL_RenderDrawRect(ren, &cRect);
 
-                drawText(ren, fontBig, cards[i].title, cRect.x + 28, cRect.y + 22, sel ? cDark : cGold);
-                drawText(ren, fontSmall, cards[i].l1, cRect.x + 28, cRect.y + 78, sel ? cDark : cWhite);
-                drawText(ren, fontSmall, cards[i].l2, cRect.x + 28, cRect.y + 118, sel ? cDark : cWhite);
-                drawText(ren, fontSmall, cards[i].l3, cRect.x + 28, cRect.y + 178, sel ? cDark : cCyan);
+                drawText(ren, fontBig, cards[i].title, cRect.x + 20, cRect.y + 20, sel ? cDark : cGold);
+                drawText(ren, fontSmall, cards[i].l1, cRect.x + 20, cRect.y + 76, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l2, cRect.x + 20, cRect.y + 116, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l3, cRect.x + 20, cRect.y + 176, sel ? cDark : cCyan);
             }
 
             SDL_RenderPresent(ren);
@@ -1818,8 +1795,10 @@ int main(int argc, char* argv[]) {
 
         SDL_Color bgCol = {20, 83, 45, 255};
         if (gameMode == 1) bgCol = {18, 65, 75, 255};
-        else if (gameMode == 2 || gameMode == 4) bgCol = {75, 28, 32, 255};
+        else if (gameMode == 2) bgCol = {75, 28, 32, 255};
         else if (gameMode == 3) bgCol = {28, 52, 88, 255};
+        else if (gameMode == 4) bgCol = {62, 24, 68, 255}; // 四川血流成河：高贵紫红牌桌
+        else if (gameMode == 5) bgCol = {22, 74, 58, 255}; // 经典大众麻将：典雅翡翠牌桌
         SDL_SetRenderDrawColor(ren, bgCol.r, bgCol.g, bgCol.b, 255);
         SDL_RenderClear(ren);
 
@@ -1946,9 +1925,14 @@ int main(int argc, char* argv[]) {
         if (gameMode == 0) riverTitle = "中央牌河 (台湾16张 | 当前连庄: " + std::to_string(streakCount) + ")";
         else if (gameMode == 1) riverTitle = "中央牌河 (宝牌指示: " + doraIndicator.label + " -> 宝牌: " + actualDora.label + ")";
         else if (gameMode == 2 || gameMode == 4) {
-            riverTitle = "四川血战 | 缺门: 上家[" + suitNameCN(voidSuit.at(2)) + "] 对家[" + suitNameCN(voidSuit.at(1)) +
+            std::string mName = (gameMode == 4) ? "四川血流" : "四川血战";
+            riverTitle = mName + " | 缺门: 上家[" + suitNameCN(voidSuit.at(2)) + "] 对家[" + suitNameCN(voidSuit.at(1)) +
                          "] 下家[" + suitNameCN(voidSuit.at(0)) + "] 你[" + suitNameCN(voidSuit.at(3)) + "]";
-        } else riverTitle = "中央牌河 (广东推倒胡 | 1/5/9及东风中马翻倍)";
+        } else if (gameMode == 3) {
+            riverTitle = "中央牌河 (广东推倒胡 | 1/5/9及东风中马翻倍)";
+        } else {
+            riverTitle = "中央牌河 (经典大众麻将 | 全国通用无起胡门槛)";
+        }
         drawText(ren, fontSmall, riverTitle, river.x + 16, river.y + 8, cWhite);
 
         // 四川血战模式：若已有玩家胡牌，在中央牌河右上角亮出金色“[已胡牌]”播报徽章
