@@ -829,6 +829,7 @@ int main(int argc, char* argv[]) {
     logStep("8: avatars ok");
 
     bool inMenu = true;
+    bool hasPausedGame = false;
     int menuCursor = 0;
     int gameMode = 0; // 0:台湾16张 1:日本立直 2:四川血战(第二步) 3:广东推倒胡
     bool showSettings = false;
@@ -1120,6 +1121,7 @@ int main(int argc, char* argv[]) {
     };
 
     auto startNewGame = [&](bool resetAll) {
+        hasPausedGame = false;
         int startChips = 50000;
         int initTiles = (gameMode == 0) ? 16 : 13;
         if (resetAll || matchOverByBankrupt) {
@@ -1407,6 +1409,11 @@ int main(int argc, char* argv[]) {
                         kDown |= HidNpadButton_A;
                     }
                 }
+                        }
+            if (hasPausedGame && (kDown & HidNpadButton_B)) {
+                inMenu = false;
+                playSfx(gSfxPlay);
+                continue;
             }
             if (kDown & HidNpadButton_A) {
                 gameMode = menuCursor;
@@ -1421,7 +1428,10 @@ int main(int argc, char* argv[]) {
             SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255};
 
             drawText(ren, fontTitle, "今晚别想胡・全能麻将大厅", 435, 35, cGold);
-            drawText(ren, fontSmall, "方向键选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅", 250, 88, cWhite);
+            std::string menuSub = hasPausedGame
+                ? "方向键选玩法 | (A)开启新对局 | (B)返回刚才的牌局 | (ZL)换BGM | (+)设置"
+                : "方向键选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)临时回大厅";
+            drawText(ren, fontSmall, menuSub, 230, 88, hasPausedGame ? cGold : cWhite);
 
             struct ModeCard { std::string title, l1, l2, l3; };
             std::vector<ModeCard> cards = {
@@ -1450,7 +1460,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        if (kDown & HidNpadButton_Minus) { inMenu = true; continue; }
+        if (kDown & HidNpadButton_Minus) { hasPausedGame = true; inMenu = true; playSfx(gSfxPlay); continue; }
         if ((kDown & HidNpadButton_R) || (phase == 3 && touchTapped && touchY > 120)) startNewGame((kHeld & HidNpadButton_L) != 0);
 
         // phase == 4: 四川麻将开局定缺选择阶段
