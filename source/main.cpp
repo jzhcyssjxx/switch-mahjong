@@ -818,6 +818,57 @@ int main(int argc, char* argv[]) {
     TTF_Font* fontSmall = TTF_OpenFont("romfs:/font.ttf", 19);
     logStep("6: font ok");
 
+    // 片头启动画面渲染函数（消除黑屏，边加载资源边推进金色进度条）
+    auto renderSplash = [&](int progressPct, const std::string& tipText) {
+        SDL_SetRenderDrawColor(ren, 12, 48, 28, 255);
+        SDL_RenderClear(ren);
+
+        // 外围双层金色牌桌装饰框
+        SDL_Rect outerFrame = {36, 36, 1208, 648};
+        SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+        SDL_RenderDrawRect(ren, &outerFrame);
+        SDL_Rect innerFrame = {44, 44, 1192, 632};
+        SDL_SetRenderDrawColor(ren, 34, 130, 80, 255);
+        SDL_RenderDrawRect(ren, &innerFrame);
+
+        // 四角装饰麻将牌（東、南、西、北 / 中、發、白）
+        drawMahjongTile(ren, fontBig, fontSmall, {3, 1, "东"}, {90, 85, 68, 105}, false);
+        drawMahjongTile(ren, fontBig, fontSmall, {3, 5, "中"}, {1122, 85, 68, 105}, true);
+        drawMahjongTile(ren, fontBig, fontSmall, {3, 6, "发"}, {90, 530, 68, 105}, false);
+        drawMahjongTile(ren, fontBig, fontSmall, {3, 7, "白"}, {1122, 530, 68, 105}, false);
+
+        // 中央红金主视觉牌匾
+        SDL_Rect emblem = {360, 175, 560, 195};
+        SDL_SetRenderDrawColor(ren, 125, 24, 28, 255);
+        SDL_RenderFillRect(ren, &emblem);
+        SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+        SDL_RenderDrawRect(ren, &emblem);
+        SDL_Rect emblemIn = {emblem.x + 6, emblem.y + 6, emblem.w - 12, emblem.h - 12};
+        SDL_RenderDrawRect(ren, &emblemIn);
+
+        SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255}, cCyan = {103, 232, 249, 255};
+        drawText(ren, fontTitle, "今 晚 别 想 胡", 510, 215, cGold);
+        drawText(ren, fontBig, "TONIGHT NO WIN・六大麻将合集", 460, 280, cWhite);
+        drawText(ren, fontSmall, "真人角色语音 × 美女荷官报牌 × 全屏触控", 455, 326, cCyan);
+
+        // 底部加载进度条
+        SDL_Rect barBg = {340, 445, 600, 26};
+        SDL_SetRenderDrawColor(ren, 8, 28, 18, 255);
+        SDL_RenderFillRect(ren, &barBg);
+        SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+        SDL_RenderDrawRect(ren, &barBg);
+
+        int fillW = (594 * std::max(5, std::min(100, progressPct))) / 100;
+        SDL_Rect barFg = {barBg.x + 3, barBg.y + 3, fillW, 20};
+        SDL_SetRenderDrawColor(ren, 245, 158, 11, 255);
+        SDL_RenderFillRect(ren, &barFg);
+
+        drawText(ren, fontSmall, tipText + " (" + std::to_string(progressPct) + "%)", 480, 485, cGold);
+        SDL_RenderPresent(ren);
+    };
+
+    renderSplash(15, "正在唤醒牌桌与字体引擎...");
+
     std::vector<std::string> bgmPaths = {
         "romfs:/bgm.ogg", "romfs:/bgm1.ogg", "romfs:/bgm2.ogg",
         "romfs:/bgm3.ogg", "romfs:/bgm4.ogg", "romfs:/bgm5.ogg"
@@ -826,6 +877,7 @@ int main(int argc, char* argv[]) {
         Mix_Music* m = Mix_LoadMUS(path.c_str());
         if (m) gBgmList.push_back(m);
     }
+    renderSplash(35, "正在加载背景音乐曲库...");
     playRandomBgm();
 
     gSfxPlay = Mix_LoadWAV("romfs:/voices/play.wav");
@@ -834,6 +886,7 @@ int main(int argc, char* argv[]) {
     gSfxGang = Mix_LoadWAV("romfs:/voices/gang.wav");
     gSfxHu = Mix_LoadWAV("romfs:/voices/hu.wav");
     gSfxTaunt = Mix_LoadWAV("romfs:/voices/taunt.wav");
+    renderSplash(55, "正在调试吃碰杠胡立体音效...");
     logStep("7: base audio ok");
 
     std::vector<SDL_Texture*> aiNormal = {
@@ -851,12 +904,13 @@ int main(int argc, char* argv[]) {
         IMG_LoadTexture(ren, "romfs:/ai1_lose.png"),
         IMG_LoadTexture(ren, "romfs:/ai2_lose.png")
     };
+    renderSplash(75, "正在邀请三位雀神牌友入座...");
     logStep("8: avatars ok");
-
+    
     bool inMenu = true;
     bool hasPausedGame = false;
     int menuCursor = 0;
-    int gameMode = 0; // 0:台湾16张 1:日本立直 2:四川血战(第二步) 3:广东推倒胡
+    int gameMode = 0;
     bool showSettings = false;
     int settingsCursor = 0;
 
@@ -873,7 +927,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<AIPlayer> ais = {
         {
-            "下家・甜美辣妹", "人家今天手气超好的啦", 10000, {}, {},
+            "下家・甜美辣妹", "人家今天手气超好的啦", 50000, {}, {},
             {"哎呀，手滑打错了", "这张人家不要哦", "听牌啦听牌啦！"},
             "哈哈！我胡牌啦，给钱给钱！",
             "呜呜，人家点炮输惨了...",
@@ -882,7 +936,7 @@ int main(int argc, char* argv[]) {
             "开杠！再补一张牌~"
         },
         {
-            "对家・淡定军师", "不急，慢慢算牌。", 10000, {}, {},
+            "对家・淡定军师", "不急，慢慢算牌。", 50000, {}, {},
             {"嗯，稳扎稳打。", "让我想想...", "这把牌面不错。"},
             "承让了，这局我胡牌。",
             "失算了，竟然被你胡了...",
@@ -891,7 +945,7 @@ int main(int argc, char* argv[]) {
             "开杠，局势已定。"
         },
         {
-            "上家・暴躁大哥", "准备好被我横扫了吗？", 10000, {}, {},
+            "上家・暴躁大哥", "准备好被我横扫了吗？", 50000, {}, {},
             {"这你都不信！", "快点啦，磨磨蹭蹭的！", "乱打小心点炮哦！"},
             "哈哈哈！老子胡牌了，拿钱来！",
             "可恶！这把居然输给你了！",
@@ -923,8 +977,10 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    renderSplash(100, "牌局准备就绪，祝您大杀四方！");
+    playSfx(gSfxPlay);
+    SDL_Delay(450);
     logStep("8.5: character voices ok");
-
     auto drawSettingsOverlay = [&]() {
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 185);
@@ -1442,7 +1498,7 @@ int main(int argc, char* argv[]) {
             if (touchTapped) {
                 for (int i = 0; i < 6; ++i) {
                     int col = i % 3, row = i / 3;
-                    SDL_Rect cRect = {45 + col * 405, 135 + row * 275, 380, 245};
+                    SDL_Rect cRect = {45 + col * 405, 148 + row * 265, 380, 238};
                     if (touchX >= cRect.x && touchX <= cRect.x + cRect.w && touchY >= cRect.y && touchY <= cRect.y + cRect.h) {
                         menuCursor = i;
                         kDown |= HidNpadButton_A;
@@ -1461,40 +1517,80 @@ int main(int argc, char* argv[]) {
                 startNewGame(true);
             }
 
-            SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
+            // 深邃翡翠丝绒渐变感背景 + 双层金边
+            SDL_SetRenderDrawColor(ren, 12, 46, 28, 255);
             SDL_RenderClear(ren);
+            SDL_Rect bgInner = {18, 14, 1244, 692};
+            SDL_SetRenderDrawColor(ren, 16, 62, 38, 255);
+            SDL_RenderFillRect(ren, &bgInner);
+            SDL_SetRenderDrawColor(ren, 217, 155, 38, 255);
+            SDL_RenderDrawRect(ren, &bgInner);
+
             SDL_Color cGold = {251, 191, 36, 255}, cWhite = {255, 255, 255, 255};
             SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255};
 
-            drawText(ren, fontTitle, "今晚别想胡・六大麻将全能大厅", 415, 35, cGold);
-            std::string menuSub = hasPausedGame
-                ? "方向键/摇杆/触控选玩法 | (A)新对局 | (B)继续刚才的牌局 | (ZL)换BGM | (+)设置"
-                : "方向键/摇杆/触控选玩法 | (A)进入对局 | (ZL)换BGM | (+)音量设置 | 局中(-)回大厅";
-            drawText(ren, fontSmall, menuSub, 210, 88, hasPausedGame ? cGold : cWhite);
+            // 顶部左右三位牌友头像助阵
+            if (aiNormal.at(2)) { SDL_Rect rL = {42, 26, 86, 86}; SDL_RenderCopy(ren, aiNormal.at(2), nullptr, &rL); }
+            if (aiNormal.at(1)) { SDL_Rect rL2 = {140, 26, 86, 86}; SDL_RenderCopy(ren, aiNormal.at(1), nullptr, &rL2); }
+            if (aiNormal.at(0)) { SDL_Rect rR = {1152, 26, 86, 86}; SDL_RenderCopy(ren, aiNormal.at(0), nullptr, &rR); }
 
-            struct ModeCard { std::string title, l1, l2, l3; };
+            // 顶部中央红金豪华牌匾
+            SDL_Rect headerBox = {245, 22, 888, 96};
+            SDL_SetRenderDrawColor(ren, 115, 22, 26, 255);
+            SDL_RenderFillRect(ren, &headerBox);
+            SDL_SetRenderDrawColor(ren, 251, 191, 36, 255);
+            SDL_RenderDrawRect(ren, &headerBox);
+
+            drawText(ren, fontTitle, "今晚别想胡・六大麻将全能大厅", 455, 32, cGold);
+            std::string menuSub = hasPausedGame
+                ? "方向键/摇杆/触控选玩法 | (A)开启新对局 | (B)秒回刚才的牌局 | (ZL)换BGM | (+)设置"
+                : "方向键/摇杆/触控选玩法 | (A)进入对局 | (ZL)切换BGM | (+)音量设置 | 局中(-)回大厅";
+            drawText(ren, fontSmall, menuSub, 285, 82, hasPausedGame ? cGold : cCyan);
+
+            struct ModeCard { std::string title, tag, l1, l2, l3; SDL_Color tagCol; };
             std::vector<ModeCard> cards = {
-                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄", "・初始筹码：50,000 分（负分破产）"},
-                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直，满贯役满结算", "・初始点数：50,000 点（负分击飞）"},
-                {"3. 四川血战到底", "・108 张万筒条，起手定缺、刮风下雨", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：50,000 分（负分破产）"},
-                {"4. 广东推倒胡 (买马)", "・13 张快节奏平胡，七对/碰碰/清一色", "・胡牌翻 4 张买马牌，中马直接翻倍！", "・初始筹码：50,000 分（负分破产）"},
-                {"5. 四川血流成河", "・108 张万筒条，开局定缺、刮风下雨", "・胡牌不离场无限连胡，摸光牌墙才算账！", "・初始筹码：50,000 分（负分破产）"},
-                {"6. 经典大众麻将", "・136 张全国通用，支持吃/碰/杠/七对", "・无起胡门槛，清一色/碰碰胡经典算番", "・初始筹码：50,000 分（负分破产）"}
+                {"1. 台湾 16 张麻将", "16张・连庄", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄", "・初始筹码：50,000 分（负分破产）", {220, 38, 38, 255}},
+                {"2. 日本 13 张立直", "立直・宝牌", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直，满贯役满结算", "・初始点数：50,000 点（负分击飞）", {37, 99, 235, 255}},
+                {"3. 四川血战到底", "定缺・血战", "・108 张万筒条，起手定缺、刮风下雨", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：50,000 分（负分破产）", {217, 119, 6, 255}},
+                {"4. 广东推倒胡", "翻4张买马", "・13 张快节奏平胡，七对/碰碰/清一色", "・胡牌翻 4 张买马牌，中马直接翻倍！", "・初始筹码：50,000 分（负分破产）", {5, 150, 105, 255}},
+                {"5. 四川血流成河", "无限连胡", "・108 张万筒条，开局定缺、刮风下雨", "・胡牌不离场无限连胡，摸光牌墙才算账！", "・初始筹码：50,000 分（负分破产）", {147, 51, 234, 255}},
+                {"6. 经典大众麻将", "全国通用", "・136 张全国通用，支持吃/碰/杠/七对", "・无起胡门槛，清一色/碰碰胡经典算番", "・初始筹码：50,000 分（负分破产）", {13, 148, 136, 255}}
             };
 
             for (int i = 0; i < 6; ++i) {
                 int col = i % 3, row = i / 3;
-                SDL_Rect cRect = {45 + col * 405, 135 + row * 275, 380, 245};
+                SDL_Rect cRect = {45 + col * 405, 148 + row * 265, 380, 238};
                 bool sel = (menuCursor == i);
-                SDL_SetRenderDrawColor(ren, sel ? 254 : 20, sel ? 240 : 83, sel ? 138 : 45, 255);
-                SDL_RenderFillRect(ren, &cRect);
-                SDL_SetRenderDrawColor(ren, sel ? 251 : 45, sel ? 191 : 130, sel ? 36 : 80, 255);
-                SDL_RenderDrawRect(ren, &cRect);
 
-                drawText(ren, fontBig, cards[i].title, cRect.x + 20, cRect.y + 20, sel ? cDark : cGold);
-                drawText(ren, fontSmall, cards[i].l1, cRect.x + 20, cRect.y + 76, sel ? cDark : cWhite);
-                drawText(ren, fontSmall, cards[i].l2, cRect.x + 20, cRect.y + 116, sel ? cDark : cWhite);
-                drawText(ren, fontSmall, cards[i].l3, cRect.x + 20, cRect.y + 176, sel ? cDark : cCyan);
+                // 3D 立体投影底座
+                SDL_Rect shadow = {cRect.x + 6, cRect.y + 7, cRect.w, cRect.h};
+                SDL_SetRenderDrawColor(ren, 8, 28, 16, 255);
+                SDL_RenderFillRect(ren, &shadow);
+
+                // 卡片主体（选中时亮金高光，未选中时深翠质感）
+                SDL_SetRenderDrawColor(ren, sel ? 254 : 22, sel ? 243 : 78, sel ? 158 : 48, 255);
+                SDL_RenderFillRect(ren, &cRect);
+                SDL_SetRenderDrawColor(ren, sel ? 251 : 52, sel ? 191 : 145, sel ? 36 : 92, 255);
+                SDL_RenderDrawRect(ren, &cRect);
+                if (sel) {
+                    SDL_Rect selIn = {cRect.x + 3, cRect.y + 3, cRect.w - 6, cRect.h - 6};
+                    SDL_RenderDrawRect(ren, &selIn);
+                }
+
+                // 卡片顶部标题栏 + 右上角彩色玩法徽章
+                drawText(ren, fontBig, cards[i].title, cRect.x + 18, cRect.y + 18, sel ? cDark : cGold);
+                SDL_Rect tagBox = {cRect.x + cRect.w - 114, cRect.y + 16, 98, 28};
+                SDL_SetRenderDrawColor(ren, cards[i].tagCol.r, cards[i].tagCol.g, cards[i].tagCol.b, 255);
+                SDL_RenderFillRect(ren, &tagBox);
+                drawText(ren, fontSmall, cards[i].tag, tagBox.x + 10, tagBox.y + 4, cWhite);
+
+                // 分割细线
+                SDL_SetRenderDrawColor(ren, sel ? 217 : 45, sel ? 155 : 125, sel ? 38 : 78, 255);
+                SDL_RenderDrawLine(ren, cRect.x + 18, cRect.y + 56, cRect.x + cRect.w - 18, cRect.y + 56);
+
+                drawText(ren, fontSmall, cards[i].l1, cRect.x + 18, cRect.y + 72, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l2, cRect.x + 18, cRect.y + 112, sel ? cDark : cWhite);
+                drawText(ren, fontSmall, cards[i].l3, cRect.x + 18, cRect.y + 172, sel ? cDark : cCyan);
             }
 
             SDL_RenderPresent(ren);
