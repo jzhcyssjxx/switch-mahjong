@@ -837,9 +837,9 @@ int main(int argc, char* argv[]) {
     Tile doraIndicator{0, 1, "1万"};
     Tile actualDora{0, 2, "2万"};
 
-    int playerScore = 10000;
-    int roundNum = 1;
-    int streakCount = 0;
+    int playerScore = 50000, roundNum = 1, streakCount = 0;
+    int totalWins = 0, totalLosses = 0;
+    bool matchOverByBankrupt = false;
 
     std::vector<AIPlayer> ais = {
         {
@@ -1013,6 +1013,16 @@ int main(int argc, char* argv[]) {
             for (int i = 0; i < 3; ++i) ais.at(i).score += res.scoreDeltas.at(i);
             playerScore += res.scoreDeltas.at(3);
             streakCount = (res.winnerSeat == 3) ? (streakCount + 1) : 0;
+            if (res.scoreDeltas.at(3) > 0) totalWins++;
+            else if (res.scoreDeltas.at(3) < 0) totalLosses++;
+
+            if (playerScore < 0 || ais.at(0).score < 0 || ais.at(1).score < 0 || ais.at(2).score < 0) {
+                matchOverByBankrupt = true;
+                lastWinResult.title = "【破产打飞・比赛结束】" + lastWinResult.title;
+                statusMsg = "有人负分破产，比赛结束！按(R)重置50000分新开比赛 | (-)回大厅";
+            } else {
+                statusMsg = "本局结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
+            }
             hasWinPanel = true;
             phase = 3;
             statusMsg = "本局结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
@@ -1048,9 +1058,18 @@ int main(int argc, char* argv[]) {
             lastWinResult = res;
             lastWinResult.title = "四川血战到底・本局总结算 (共 " + std::to_string(xuezhanLogs.size()) + " 次胡/杠)";
             lastWinResult.details = xuezhanLogs.back();
+            if (hasWonSeat.at(3)) totalWins++;
+            else totalLosses++;
+
+            if (playerScore < 0 || ais.at(0).score < 0 || ais.at(1).score < 0 || ais.at(2).score < 0) {
+                matchOverByBankrupt = true;
+                lastWinResult.title = "【破产打飞・血战比赛结束】";
+                statusMsg = "有人负分破产，比赛结束！按(R)重置50000分新开比赛 | (-)回大厅";
+            } else {
+                statusMsg = "血战结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
+            }
             hasWinPanel = true;
             phase = 3;
-            statusMsg = "血战结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
         } else {
             // 牌局继续！由胡牌者的下一位未胡玩家接力摸牌
             int nxt = nextActiveSeat(w);
@@ -1092,10 +1111,12 @@ int main(int argc, char* argv[]) {
     };
 
     auto startNewGame = [&](bool resetAll) {
-        int startChips = (gameMode == 1) ? 25000 : 10000;
+        int startChips = 50000;
         int initTiles = (gameMode == 0) ? 16 : 13;
-        if (resetAll) {
+        if (resetAll || matchOverByBankrupt) {
             playerScore = startChips; roundNum = 1; streakCount = 0;
+            totalWins = 0; totalLosses = 0;
+            matchOverByBankrupt = false;
             for (int i = 0; i < 3; ++i) ais.at(i).score = startChips;
         } else {
             roundNum++;
@@ -1345,7 +1366,12 @@ int main(int argc, char* argv[]) {
                 }
                 saveVolumeConfig();
             }
-            if ((kDown & HidNpadButton_A) && settingsCursor == 3) { saveVolumeConfig(); break; }
+            if ((kDown & HidNpadButton_A) && settingsCursor == 3) {
+                saveVolumeConfig();
+                Mix_HaltChannel(-1);
+                Mix_HaltMusic();
+                break;
+            }
             if (kDown & HidNpadButton_B) { saveVolumeConfig(); showSettings = false; }
 
             SDL_SetRenderDrawColor(ren, 15, 55, 32, 255);
@@ -1391,10 +1417,10 @@ int main(int argc, char* argv[]) {
 
             struct ModeCard { std::string title, l1, l2, l3; };
             std::vector<ModeCard> cards = {
-                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄/清一色", "・初始筹码：10,000 分"},
-                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直 + 一发，满贯役满结算", "・初始点数：25,000 点"},
-                {"3. 四川血战到底 (正式版)", "・108 张万筒条，起手定缺、刮风下雨收税", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：10,000 分"},
-                {"4. 广东推倒胡 (买马版)", "・13 张快节奏平胡，支持七对/碰碰/清一色", "・胡牌自动翻 4 张买马牌，中马直接翻倍！", "・初始筹码：10,000 分"}
+                {"1. 台湾 16 张麻将", "・起手 16 张，凑 5 组顺刻 + 1 对眼", "・经典台数制：底台/门清/自摸/连庄/清一色", "・初始筹码：50,000 分（负分破产结束）"},
+                {"2. 日本 13 张立直麻将", "・起手 13 张，支持七对子、宝牌翻倍", "・门清听牌按(ZR)立直 + 一发，满贯役满结算", "・初始点数：50,000 点（负分击飞结束）"},
+                {"3. 四川血战到底 (正式版)", "・108 张万筒条，起手定缺、刮风下雨收税", "・一家胡牌不结束，三家胡完才散场！", "・初始筹码：50,000 分（负分破产结束）"},
+                {"4. 广东推倒胡 (买马版)", "・13 张快节奏平胡，支持七对/碰碰/清一色", "・胡牌自动翻 4 张买马牌，中马直接翻倍！", "・初始筹码：50,000 分（负分破产结束）"}
             };
 
             for (int i = 0; i < 4; ++i) {
@@ -1699,8 +1725,9 @@ int main(int argc, char* argv[]) {
         SDL_Color cDark = {20, 20, 20, 255}, cCyan = {103, 232, 249, 255}, cGold = {251, 191, 36, 255};
 
         drawText(ren, fontSmall, statusMsg, 25, 8, cYellow);
-        std::string topRight = "第" + std::to_string(roundNum) + "局 | 点数:" + std::to_string(playerScore) + " | 余牌:" + std::to_string(wall.size()) + " | (+)设置 | (-)大厅";
-        drawText(ren, fontSmall, topRight, 650, 8, cGold);
+        std::string topRight = "第" + std::to_string(roundNum) + "局(胜" + std::to_string(totalWins) + "/负" + std::to_string(totalLosses) +
+                               ") | 点数:" + std::to_string(playerScore) + " | 余牌:" + std::to_string(wall.size()) + " | (+)设置 | (-)大厅";
+        drawText(ren, fontSmall, topRight, 540, 8, cGold);
 
         auto getAiAvatar = [&](int aiIdx) -> SDL_Texture* {
             SDL_Texture* cur = aiNormal.at(aiIdx);
@@ -1910,7 +1937,10 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            drawText(ren, fontSmall, "按(R)继续下一局 | 按住(L+R)重置筹码 | 按(-)返回四模式大厅", panel.x + 30, panel.y + panelH - 42, cYellow);
+            std::string panelHint = matchOverByBankrupt
+                ? "【有人负分破产・比赛已结束】按(R)或点屏幕重置50,000分新开比赛 | 按(-)回大厅"
+                : "按(R)或点屏幕继续下一局 | 按住(L+R)重置筹码 | 按(-)返回四模式大厅";
+            drawText(ren, fontSmall, panelHint, panel.x + 30, panel.y + panelH - 42, cYellow);
         }
 
         std::string infoLine = "";
@@ -1992,6 +2022,8 @@ int main(int argc, char* argv[]) {
     }
 
     saveVolumeConfig();
+    Mix_HaltChannel(-1);
+    Mix_HaltMusic();
     if (fLog) fclose(fLog);
     for (auto* t : aiNormal) if (t) SDL_DestroyTexture(t);
     for (auto* t : aiWin) if (t) SDL_DestroyTexture(t);
