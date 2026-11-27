@@ -2057,10 +2057,12 @@ int main(int argc, char* argv[]) {
 
         SDL_RenderPresent(ren);
     }
-
     saveVolumeConfig();
     if (fLog) fclose(fLog);
+    Mix_HaltChannel(-1);
+    Mix_HaltMusic();
+    Mix_CloseAudio();
+    SDL_Quit();
     romfsExit();
-    svcExitProcess();
     return 0;
 }
