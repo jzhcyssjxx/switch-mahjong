@@ -7,7 +7,7 @@ SOURCES     := source
 INCLUDES    := include
 ROMFS       := romfs
 
-APP_TITLE   := 明星三缺一风格迷你麻将
+APP_TITLE := 今晚别想胡
 APP_AUTHOR  := HomebrewDev
 APP_VERSION := 1.0.0
 
