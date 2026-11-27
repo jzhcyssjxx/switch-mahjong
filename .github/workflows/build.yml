@@ -15,6 +15,7 @@ jobs:
           cp /usr/share/fonts/truetype/wqy/wqy-microhei.ttc romfs/font.ttf
           mogrify -resize 160x160 romfs/*.png || true
           if [ -f icon.jpg ]; then convert icon.jpg -resize 256x256! -background black -alpha remove -colorspace sRGB -type TrueColor -strip -interlace none -quality 90 JPEG:icon.jpg; fi
+          for f in romfs/voices/*.wav romfs/voices/*.mp3; do [ -f "$f" ] && ffmpeg -y -i "$f" -acodec pcm_s16le -ar 44100 -ac 2 "${f%.*}_fixed.wav" && rm -f "$f" && mv "${f%.*}_fixed.wav" "${f%.*}.wav"; done
           python3 - << 'EOF'
           import asyncio, os, subprocess
           import edge_tts
