@@ -1029,7 +1029,6 @@ int main(int argc, char* argv[]) {
             }
             hasWinPanel = true;
             phase = 3;
-            statusMsg = "本局结束！按(R)下一局 | (L+R)重置筹码 | (-)切换玩法";
             return;
         }
 
@@ -1626,7 +1625,7 @@ int main(int argc, char* argv[]) {
                             Tile ft = m.tiles.at(0);
                             if (m.type == 1 && hasTileVal(ai.hand, ft.suit, ft.val)) {
                                 removeOneTile(ai.hand, ft.suit, ft.val);
-                                m.type = 2; m.tiles.push_back(ft);
+                                m.type = 2; m.tiles = {ft, ft, ft, ft};
                                 ai.bubble = ai.gangLine;
                                 playVoice(ai.gangVoice, gSfxGang ? gSfxGang : gSfxPlay, true);
                                 applySichuanGangMoney(turn, false);
