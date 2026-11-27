@@ -1410,7 +1410,7 @@ int main(int argc, char* argv[]) {
             if (kDown & HidNpadButton_A) {
                 gameMode = menuCursor;
                 inMenu = false;
-                playSfx(gSfxPeng, gSfxPlay);
+                playSfx(gSfxPlay);
                 startNewGame(true);
             }
 
@@ -1467,7 +1467,7 @@ int main(int argc, char* argv[]) {
             if (btnRight) { dingQueCursor = (dingQueCursor + 1) % 3; playSfx(gSfxPlay); }
             if (kDown & HidNpadButton_A) {
                 voidSuit.at(3) = dingQueCursor;
-                playSfx(gSfxPeng, gSfxPlay);
+                playSfx(gSfxPlay);
                 phase = 0;
                 bool noVoidLeft = !hasVoidTiles(playerHand, voidSuit.at(3));
                 if (!noVoidLeft) {
@@ -1515,7 +1515,7 @@ int main(int argc, char* argv[]) {
                 tempHand.erase(tempHand.begin() + cursor);
                 if (menQing && playerScore >= 1000 && !getTenpaiTiles(tempHand, true).empty()) {
                     playerRiichiDeclared = true; playerIppatsu = true; playerScore -= 1000;
-                    playSfx(gSfxGang, gSfxPeng);
+                    playSfx(gSfxPlay);
                     Tile out = playerHand.at(cursor);
                     playerHand.erase(playerHand.begin() + cursor);
                     discards.push_back(out);
